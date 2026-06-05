@@ -277,7 +277,18 @@
     { k:'manage_payment_methods', l:'إدارة طرق الدفع' },
     { k:'manage_ads',        l:'إدارة الإعلانات' },
     { k:'manage_cms',        l:'إدارة المحتوى والرسائل' },
-    { k:'manage_settings',   l:'إعدادات النظام العامة' }
+    { k:'manage_settings',   l:'إعدادات النظام العامة' },
+    { k:'manage_signup_settings', l:'تخصيص نموذج التسجيل وحقوله' },
+    { k:'manage_login_settings', l:'تعديل خيارات إعدادات الدخول' },
+    { k:'manage_delivery_pricing', l:'إدارة أسعار التوصيل بين المناطق' },
+    { k:'manage_delivery_addresses', l:'إدارة قاعدة عناوين التوصيل' },
+    { k:'manage_direct_routing', l:'إعدادات التوجيه المباشر للطلبات' },
+    { k:'manage_routing_timeouts', l:'إدارة أوقات قبول الطلبات التلقائية' },
+    { k:'manage_stalled_orders', l:'معالجة الطلبات المتوقفة' },
+    { k:'manage_free_shipping', l:'شروط التوصيل المجاني للأقسام' },
+    { k:'view_platform_activity', l:'عرض سجل نشاط المنصة' },
+    { k:'view_error_dashboard', l:'عرض لوحة الأخطاء التقنية والتحذيرات' },
+    { k:'manage_system_visibility', l:'التحكم الشامل في تفعيل/تعطيل أقسام المنصة' }
   ];
   const PH17_PERM_LABELS = {
     view_orders: 'عرض الطلبات',
@@ -298,14 +309,20 @@
   window.ph17_hasPerm = function (user, key) {
     if (!user) return false;
     if (user.role === 'admin') return true;
+    if (user.role !== 'staff') return false; // الصلاحيات تمنح فقط للموظفين
     const perms = user.permissions || {};
     return !!perms[key];
   };
+  window.userHasPerm = window.ph17_hasPerm;
 
   // Override showPermsModal to support all roles + new perms.
   window.showPermsModal = function (userId) {
     const u = (AppData.users || []).find(x => x.id === userId);
     if (!u) return;
+    if (u.role !== 'staff' && u.role !== 'admin') {
+      toast('لا يمكن منح صلاحيات إدارية إلا للموظفين فقط.', 'error');
+      return;
+    }
     const perms = u.permissions || {};
     const all = ph17_allPerms();
     const rows = all.map(k => `
@@ -335,6 +352,12 @@
     document.querySelectorAll('.ph17-perm-list input[type=checkbox]').forEach(cb => cb.checked = !!val);
   };
   window.ph17_savePerms = async function (userId) {
+    const u = (AppData.users || []).find(x => x.id === userId);
+    if (!u) return;
+    if (u.role !== 'staff' && u.role !== 'admin') {
+      toast('لا يمكن منح صلاحيات إدارية إلا للموظفين فقط.', 'error');
+      return;
+    }
     const next = {};
     document.querySelectorAll('.ph17-perm-list input[type=checkbox]').forEach(cb => {
       if (cb.checked) next[cb.dataset.perm] = true;

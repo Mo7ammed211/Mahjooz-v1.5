@@ -96,11 +96,61 @@ function _renderHubPage(hubId, groups) {
 
 window.renderAdmin = function () {
   const u = State.currentUser;
-  if (!u || u.role !== 'admin') { navigate('home'); return ''; }
+  if (!u || (u.role !== 'admin' && u.role !== 'staff')) { navigate('home'); return ''; }
   // ── حارس: يضمن دائماً إمكانية التمرير عند عرض لوحة المدير ──
   if (document.body.style.overflow === 'hidden') document.body.style.overflow = '';
 
-  const activeTab = State.adminTab || 'hub_stats';
+  const tabPermMap = {
+    dashboard: 'view_advanced_stats',
+    reports: 'view_reports',
+    advance_stats: 'view_advanced_stats',
+    advanced: 'view_advanced_stats',
+    driver_performance: 'view_reports',
+    sys_catalog: 'manage_services',
+    sys_bookings: 'manage_services',
+    sys_professions: 'manage_services',
+    sys_services: 'manage_services',
+    sys_stores: 'manage_stores',
+    sys_digital: 'manage_stores',
+    sys_offers: 'manage_coupons',
+    users: 'manage_users',
+    permissions: 'manage_users',
+    provider_groups: 'manage_users',
+    providers_database: 'manage_users',
+    drivers_database: 'manage_users',
+    wallet: 'view_wallets',
+    wallet_audit: 'view_wallets',
+    banks: 'manage_banks',
+    ads: 'manage_ads',
+    cms_banners: 'manage_cms',
+    signup_settings: 'manage_signup_settings',
+    login_settings: 'manage_login_settings',
+    regions: 'manage_regions',
+    delivery_pricing: 'manage_delivery_pricing',
+    delivery_addresses: 'manage_delivery_addresses',
+    cms_texts: 'manage_cms',
+    cms_pages: 'manage_cms',
+    ph17settings: 'manage_settings',
+    direct_routing: 'manage_direct_routing',
+    routing_timeouts: 'manage_routing_timeouts',
+    stalled_orders: 'manage_stalled_orders',
+    free_shipping: 'manage_free_shipping',
+    platform_activity: 'view_platform_activity',
+    error_dashboard: 'view_error_dashboard',
+    sys_visibility: 'manage_system_visibility',
+    orders: 'view_orders',
+    live_tracking: 'view_orders',
+    availability_monitor: 'view_orders'
+  };
+
+  const hasPerm = (key) => {
+    if (u.role === 'admin') return true;
+    if (u.role !== 'staff') return false;
+    const req = tabPermMap[key];
+    if (!req) return true;
+    return typeof userHasPerm === 'function' ? userHasPerm(u, req) : (u.permissions && u.permissions[req]);
+  };
+
   const initial = (u.name || 'A').trim().charAt(0).toUpperCase();
 
   // ── إحصائيات سريعة ──
@@ -208,10 +258,33 @@ window.renderAdmin = function () {
     },
   ];
 
-  // أيّ hub يحتوي على التبويب النشط حالياً
-  const activeHub = groups.find(g => g.items.some(i => i.k === activeTab))?.id || null;
+  const allowedGroups = groups.map(g => {
+    const items = g.items.filter(item => hasPerm(item.k));
+    return items.length ? { ...g, items } : null;
+  }).filter(Boolean);
 
-  const navHTML = groups.map(g => {
+  if (allowedGroups.length === 0) {
+    toast('عذراً، لا تمتلك أي صلاحيات إدارية للوصول.', 'error');
+    navigate('home');
+    return '';
+  }
+
+  // Ensure active tab is allowed
+  const allAllowedKeys = allowedGroups.reduce((acc, g) => {
+    acc.push(g.id);
+    g.items.forEach(item => acc.push(item.k));
+    return acc;
+  }, []);
+
+  let activeTab = State.adminTab || (allowedGroups[0] ? allowedGroups[0].id : 'dashboard');
+  if (!allAllowedKeys.includes(activeTab) && !activeTab.startsWith('rental_stores_')) {
+    activeTab = allowedGroups[0] ? allowedGroups[0].id : 'dashboard';
+  }
+
+  // أيّ hub يحتوي على التبويب النشط حالياً
+  const activeHub = allowedGroups.find(g => g.items.some(i => i.k === activeTab))?.id || null;
+
+  const navHTML = allowedGroups.map(g => {
     const isActive = activeTab === g.id || activeHub === g.id;
     return `
     <button class="admin-hub-nav-btn${isActive ? ' active' : ''}" onclick="setAdminTab('${g.id}')">
@@ -237,7 +310,7 @@ window.renderAdmin = function () {
                 <div class="sidebar-user-meta">
                   <div class="sidebar-user-name">${u.name || 'المدير'}</div>
                   <div class="sidebar-user-role">
-                    <span class="sidebar-role-dot"></span>مدير النظام
+                    <span class="sidebar-role-dot"></span>${u.role === 'admin' ? 'مدير النظام' : 'موظف النظام'}
                   </div>
                 </div>
               </div>
@@ -266,8 +339,8 @@ window.renderAdmin = function () {
         </aside>
 
         <main class="admin-main">
-          ${!activeTab.startsWith('hub_') ? _renderAdminBreadcrumb(activeTab, groups) : ''}
-          ${activeTab.startsWith('hub_')        ? _renderHubPage(activeTab, groups) : ''}
+          ${!activeTab.startsWith('hub_') ? _renderAdminBreadcrumb(activeTab, allowedGroups) : ''}
+          ${activeTab.startsWith('hub_')        ? _renderHubPage(activeTab, allowedGroups) : ''}
           ${activeTab === 'dashboard'            ? renderAdminDash() : ''}
           ${activeTab === 'users'               ? renderAdminUsers() : ''}
           ${activeTab === 'sys_catalog'         ? (typeof ph46_renderAdminProductsCatalog === 'function' ? ph46_renderAdminProductsCatalog() : '<div style="padding:40px;text-align:center;color:var(--text-muted)">⏳ جاري تحميل النظام...</div>') : ''}
@@ -908,7 +981,7 @@ function renderAdminUsers() {
               ${canViewWallets ? `<div style="text-align:center;font-weight:700;margin-bottom:8px;color:#10b981;font-size:14px">${AppData.wallets ? (AppData.wallets[u.id || u.uid]?.balance || 0) : 0} ر</div>` : ''}
               <div style="display:flex;gap:6px">
                 <button class="btn btn-sm btn-secondary" style="flex:1" onclick="showUserDetails('${u.id}')">👁️ عرض</button>
-                ${isAdmin ? `<button class="btn btn-sm btn-secondary" onclick="showPermsModal('${u.id}')" title="صلاحيات">🔑</button>` : ''}
+                ${(isAdmin && (u.role === 'staff' || u.role === 'admin')) ? `<button class="btn btn-sm btn-secondary" onclick="showPermsModal('${u.id}')" title="صلاحيات">🔑</button>` : ''}
                 ${canAdjust ? `<button class="btn btn-sm btn-secondary" onclick="showAdjustWalletModal('${u.id}')" title="تعديل رصيد">💰</button>` : ''}
                 ${isAdmin ? `<button class="btn btn-sm" style="background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.2)" onclick="deleteUser('${u.id}')">🗑️</button>` : ''}
               </div>

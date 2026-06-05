@@ -197,12 +197,32 @@ window.bk_calNext = function () {
   bk_calRender();
 };
 
+function svc_calculatePriceForPeriod(svc, period) {
+  const basePrice = svc.finalPrice || svc.price || 0;
+  if (svc.isShiftBooking) {
+    if (period === 'morning') return svc.priceMorning !== undefined && svc.priceMorning !== null ? svc.priceMorning : basePrice;
+    if (period === 'evening') return svc.priceEvening !== undefined && svc.priceEvening !== null ? svc.priceEvening : basePrice;
+    if (period === 'fullday') return svc.priceFullDay !== undefined && svc.priceFullDay !== null ? svc.priceFullDay : (basePrice * 2);
+  }
+  if (period === 'fullday') return basePrice * 2;
+  return basePrice;
+}
+
 window.bk_setPeriod = function (p) {
   const s = window.__bkCalState; if (!s) return;
   s.period = p;
   document.querySelectorAll('.bk-period-btn').forEach(b => b.classList.remove('active'));
   const btn = document.getElementById(`bk-period-${p}`);
   if (btn) btn.classList.add('active');
+
+  // تحديث السعر المعروض في نافذة الحجز بناءً على الفترة
+  const svc = AppData.services.find(sv => sv.id === s.svcId);
+  if (svc) {
+    const calcPrice = svc_calculatePriceForPeriod(svc, p);
+    const priceText = calcPrice ? calcPrice.toLocaleString('ar-YE') + ' ريال' : 'السعر عند التواصل';
+    const priceEl = document.getElementById('bk-strip-price-val');
+    if (priceEl) priceEl.textContent = priceText;
+  }
 };
 
 window.bk_removeDate = function (ds) {
@@ -245,7 +265,7 @@ window.bk_updateConfirmBtn = function () {
 window.svc_showBookingDateModal = function (svcId) {
   const svc = AppData.services.find(s => s.id === svcId);
   if (!svc) return;
-  const dispPrice = svc.finalPrice || svc.price;
+  const dispPrice = svc_calculatePriceForPeriod(svc, 'morning');
   const priceText = dispPrice ? dispPrice.toLocaleString('ar-YE') + ' ريال' : 'السعر عند التواصل';
   const now = new Date();
 
@@ -267,7 +287,7 @@ window.svc_showBookingDateModal = function (svcId) {
       <div class="bk-svc-strip">
         <span class="bk-strip-icon">${svc.icon || '📅'}</span>
         <span class="bk-strip-name">${escHtml(svc.name)}</span>
-        <span class="bk-strip-price">${priceText}</span>
+        <span class="bk-strip-price" id="bk-strip-price-val">${priceText}</span>
       </div>
 
       <div class="bk-calendar-wrap">
@@ -296,6 +316,9 @@ window.svc_showBookingDateModal = function (svcId) {
           </button>
           <button id="bk-period-evening" class="bk-period-btn" onclick="bk_setPeriod('evening')">
             <span class="period-icon">🌆</span> مساءً
+          </button>
+          <button id="bk-period-fullday" class="bk-period-btn" onclick="bk_setPeriod('fullday')">
+            <span class="period-icon">☀️</span> يوم كامل
           </button>
         </div>
       </div>
@@ -328,15 +351,17 @@ window.bk_confirmDates = function () {
 
   const sortedDates = [...s.selectedDates].sort();
 
+  const calcPrice = svc_calculatePriceForPeriod(svc, s.period);
+
   cart.push({
     productId: cartKey,
     svcId: s.svcId,
     type: itemType,
     name: svc.name,
     icon: svc.icon || '📅',
-    price: svc.finalPrice || svc.price || 0,
+    price: calcPrice,
     qty: 1,
-    priceLabel: (!svc.finalPrice && !svc.price) ? 'السعر عند التواصل' : null,
+    priceLabel: (!calcPrice) ? 'السعر عند التواصل' : null,
     providerName: svc.providerName || svc.provider || '',
     providerUid: svc.providerUid || '',
     requiresDelivery: svc.requiresDelivery !== false,
@@ -349,8 +374,8 @@ window.bk_confirmDates = function () {
   closeModal();
 
   const count = sortedDates.length;
-  const periodLabel = s.period === 'morning' ? 'صباحاً' : 'مساءً';
-  toast(`✅ أُضيفت "${svc.name}" للسلة — ${count} ${count===1?'يوم':'أيام'} ${periodLabel} 🛒`, 'success');
+  const periodLabel = s.period === 'morning' ? 'صباحاً' : s.period === 'evening' ? 'مساءً' : 'يوم كامل';
+  toast(`✅ أُضيفت "${svc.name}" للسلة — ${count} ${count===1?'يوم':'أيام'} (${periodLabel}) 🛒`, 'success');
 
   document.querySelectorAll(`[data-svc-cart-id="${s.svcId}"]`).forEach(btn => {
     btn.innerHTML = `✅ <span>في السلة</span>`;
@@ -705,7 +730,7 @@ function ph43_renderCartBody() {
       items.forEach(item => {
         const priceText  = item.priceLabel || (item.price ? item.price.toLocaleString('ar-YE') + ' ﷼' : 'السعر عند التواصل');
         const isPriceSet = !item.priceLabel && item.price;
-        const periodLabel    = item.bookingPeriod === 'evening' ? '🌆 مساءً' : item.bookingPeriod === 'morning' ? '🌅 صباحاً' : '';
+        const periodLabel    = item.bookingPeriod === 'evening' ? '🌆 مساءً' : item.bookingPeriod === 'morning' ? '🌅 صباحاً' : item.bookingPeriod === 'fullday' ? '☀️ يوم كامل' : '';
         const rentPeriodLabel = item.rentalPeriod === 'evening'  ? '🌆 مساءً' : item.rentalPeriod === 'morning'  ? '🌅 صباحاً' : '';
 
         /* ── Booking card ── */
@@ -871,7 +896,7 @@ window.ph43_proceedCheckout = async function () {
         <span>📅</span> خدمات الحجز — مواعيدك المختارة
       </div>
       ${bookingItems.map(item => {
-        const pLabel = item.bookingPeriod === 'evening' ? '🌆 مساءً' : '🌅 صباحاً';
+        const pLabel = item.bookingPeriod === 'evening' ? '🌆 مساءً' : item.bookingPeriod === 'morning' ? '🌅 صباحاً' : '☀️ يوم كامل';
         const dates  = (item.bookingDates || []).map(ds => `<span class="cart-date-badge" style="font-size:12px">📅 ${bk_formatAr(ds)}</span>`).join('');
         return `
         <div style="margin-bottom:8px;padding:10px 12px;background:var(--bg-card);border-radius:10px;border:1px solid var(--glass-border)">
@@ -1119,7 +1144,7 @@ window.ph43_confirmOrder = async function () {
       const svc    = AppData.services.find(s => s.id === item.svcId);
       const dates  = item.bookingDates || [];
       const period = item.bookingPeriod || 'morning';
-      const periodLabel = period === 'evening' ? 'مساءً' : 'صباحاً';
+      const periodLabel = period === 'evening' ? 'مساءً' : period === 'morning' ? 'صباحاً' : 'يوم كامل';
       const orderId = await generateOrderId();
       await fsAdd('orders', {
         orderId, type: 'booking_order',

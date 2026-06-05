@@ -33,10 +33,12 @@ window.ph36_autoPromptRating = function () {
   const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
   const now        = Date.now();
 
+  const DONE_STATUSES = ['completed', 'delivered'];
+
   const unrated = orders.filter(o => {
-    if (o.customerId !== u.uid)           return false;
-    if (o.status !== 'completed')         return false;
-    if (shown.has(o.id))                  return false;
+    if (o.customerId !== u.uid)                        return false;
+    if (!DONE_STATUSES.includes(o.status))             return false;
+    if (shown.has(o.id))                               return false;
     if (ratings.some(r => r.orderId === o.id && r.customerId === u.uid)) return false;
     // فقط الطلبات المكتملة خلال آخر 7 أيام
     const ts = o.createdAt?.seconds ? o.createdAt.seconds * 1000
@@ -71,7 +73,7 @@ function _ph36_showPromptBanner(o) {
       </div>
       <div style="display:flex;gap:8px;flex-shrink:0">
         <button onclick="ph36_showOrderRatingModal('${o.id}')" 
-                style="padding:8px 18px;background:#fff;color:#7c3aed;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer">
+                style="padding:8px 18px;background:rgba(255,255,255,.92);color:#7c3aed;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15)">
           ⭐ قيّم الآن
         </button>
         <button onclick="document.getElementById('ph36-prompt-banner')?.remove()"
@@ -99,8 +101,17 @@ window.ph36_showOrderRatingModal = function (orderId) {
 
   const u          = State?.currentUser;
   const isStore    = o.type === 'store_order';
-  const driver     = o.driverId ? (AppData?.users || []).find(x => x.id === o.driverId) : null;
-  const driverName = driver?.name || o.driverName || '';
+  const isDigital  = o.type === 'digital_order';
+
+  // ── تحديد ما إذا كان الطلب شمل توصيل فعلي بمندوب ──
+  // الشروط: driverId موجود + ليس استلام ذاتي + ليس رقمي
+  const isPickup       = o.deliveryType === 'pickup';
+  const hadDriver      = !!(o.driverId) && !isPickup && !isDigital;
+  const driver         = hadDriver ? (AppData?.users || []).find(x => x.id === o.driverId) : null;
+  const driverName     = driver?.name || (hadDriver ? o.driverName : '') || '';
+
+  // تقييم المندوب يظهر فقط إذا كان هناك مندوب فعلي وصّل الطلب
+  const showDriverRating = hadDriver && !!(driverName || o.driverId);
 
   const tagsPool = [
     '✅ دقيقون', '👍 محترفون', '⏰ في الوقت المحدد',
@@ -141,12 +152,13 @@ window.ph36_showOrderRatingModal = function (orderId) {
         <div id="ph36-vendor-text" style="text-align:center;font-size:14px;color:var(--text-muted);min-height:20px">اختر تقييمك</div>
       </div>
 
-      <!-- تقييم المندوب (إن وجد) -->
-      ${driverName ? `
-      <div style="background:var(--bg-card,#fff);border:2px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px">
-        <div style="font-weight:700;font-size:14px;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-          <span>🚗</span><span>تقييم المندوب: ${driverName}</span>
+      <!-- تقييم المندوب — يظهر فقط إذا كان هناك مندوب فعلي قام بالتوصيل -->
+      ${showDriverRating ? `
+      <div style="background:var(--bg-card,#1a1631);border:2px solid var(--border,#322b54);border-radius:14px;padding:16px;margin-bottom:12px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px;display:flex;align-items:center;gap:8px;color:var(--text-primary)">
+          <span>🚗</span><span>تقييم المندوب</span>
         </div>
+        ${driverName ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;padding-right:26px">${driverName}</div>` : ''}
         <div style="display:flex;gap:10px;justify-content:center;margin-bottom:8px" id="ph36-driver-stars">
           ${[1,2,3,4,5].map(n => `
             <button onclick="ph36_pickStar('driver',${n},this)"

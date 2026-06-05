@@ -48,9 +48,16 @@ window.ph29_showRatingModal = function(orderId, options = {}) {
   const o = AppData.orders.find(x => x.id === orderId);
   if (!o) return;
   
-  const svc = AppData.services.find(s => s.id === o.svcId);
+  const svc    = AppData.services.find(s => s.id === o.svcId);
   const vendor = AppData.users.find(u => u.id === o.vendorId);
-  const driver = o.driverId ? AppData.users.find(u => u.id === o.driverId) : null;
+
+  // ── تحديد ما إذا كان الطلب شمل توصيل فعلي بمندوب ──
+  const isDigital      = o.type === 'digital_order';
+  const isPickup       = o.deliveryType === 'pickup';
+  const hadDriver      = !!(o.driverId) && !isPickup && !isDigital;
+  const driver         = hadDriver ? AppData.users.find(u => u.id === o.driverId) : null;
+  const driverName     = driver?.name || (hadDriver ? o.driverName : '') || '';
+  const showDriverRating = hadDriver;
   
   openModal(`
     <div class="ph29-rating-modal">
@@ -84,13 +91,14 @@ window.ph29_showRatingModal = function(orderId, options = {}) {
           <div class="ph29-selected-rating" id="ph29-vendor-rating-text">اختر تقييمك</div>
         </div>
         
-        ${driver ? `
+        ${showDriverRating ? `
         <!-- Driver Rating -->
         <div class="ph29-rating-section">
           <div class="ph29-rating-label">
             <span>🚗</span>
             <span>تقييم المندوب</span>
           </div>
+          ${driverName ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;padding-right:4px">${driverName}</div>` : ''}
           <div class="ph29-star-picker" id="ph29-driver-stars">
             ${[1,2,3,4,5].map(n => `
               <button class="ph29-star-btn" data-value="${n}" onclick="ph29_pickStar('driver', ${n}, this)">
@@ -316,83 +324,175 @@ window.ph29_renderRatingStats = function(ratings) {
     
     const style = document.createElement('style');
     style.textContent = `
+      /* ── نظام التقييم — متوافق مع الوضع الداكن والفاتح ── */
       .ph29-rating-modal { padding: 8px; }
-      .ph29-order-summary { display: flex; align-items: center; gap: 16px; background: linear-gradient(135deg, #8b5cf620, #7c3aed10); padding: 16px; border-radius: 16px; margin-bottom: 20px; }
+
+      .ph29-order-summary {
+        display: flex; align-items: center; gap: 16px;
+        background: linear-gradient(135deg, rgba(139,92,246,.15), rgba(124,58,237,.06));
+        border: 1px solid rgba(139,92,246,.25);
+        padding: 16px; border-radius: 16px; margin-bottom: 20px;
+      }
       .ph29-svc-icon { font-size: 36px; }
-      .ph29-svc-name { font-weight: 700; font-size: 16px; }
-      .ph29-svc-provider { color: var(--text-muted); font-size: 13px; }
+      .ph29-svc-name  { font-weight: 700; font-size: 16px; color: var(--text-primary, #fff); }
+      .ph29-svc-provider { color: var(--text-muted, #888); font-size: 13px; margin-top: 2px; }
+
       .ph29-rating-sections { margin-bottom: 20px; }
-      .ph29-rating-section { background: #fff; border: 2px solid #e5e7eb; border-radius: 16px; padding: 16px; margin-bottom: 12px; }
-      .ph29-rating-label { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 12px; color: #374151; }
+
+      /* بطاقة القسم — تستخدم متغيرات المنصة */
+      .ph29-rating-section {
+        background: var(--bg-card, #1a1631);
+        border: 2px solid var(--border, #322b54);
+        border-radius: 16px; padding: 16px; margin-bottom: 12px;
+        transition: border-color .2s;
+      }
+      .ph29-rating-section:focus-within { border-color: var(--primary, #8b5cf6); }
+
+      .ph29-rating-label {
+        display: flex; align-items: center; gap: 8px;
+        font-weight: 600; margin-bottom: 14px;
+        color: var(--text-primary, #fff);
+      }
+
+      /* النجوم */
       .ph29-star-picker { display: flex; gap: 8px; justify-content: center; }
-      .ph29-star-btn { background: none; border: none; font-size: 32px; cursor: pointer; transition: all 0.2s; opacity: 0.3; filter: grayscale(1); }
-      .ph29-star-btn:hover { opacity: 0.7; transform: scale(1.2); }
-      .ph29-star-btn.active { opacity: 1; filter: grayscale(0); transform: scale(1.1); }
-      .ph29-selected-rating { text-align: center; margin-top: 8px; color: #6b7280; font-size: 14px; }
+      .ph29-star-btn {
+        background: none; border: none; font-size: 34px;
+        cursor: pointer; transition: all .2s;
+        opacity: .25; filter: grayscale(1) brightness(.9);
+        padding: 2px;
+      }
+      .ph29-star-btn:hover  { opacity: .7;  transform: scale(1.2); filter: grayscale(.4); }
+      .ph29-star-btn.active { opacity: 1;   filter: grayscale(0);  transform: scale(1.1); }
+      .ph29-selected-rating {
+        text-align: center; margin-top: 10px;
+        color: var(--text-muted, #888); font-size: 14px;
+        min-height: 20px; font-weight: 500;
+      }
+
+      /* منطقة التعليق */
       .ph29-comment-section { margin-bottom: 16px; }
-      .ph29-comment-label { display: block; font-weight: 600; margin-bottom: 8px; color: #374151; }
-      .ph29-comment-input { width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 12px; font-family: inherit; font-size: 14px; resize: none; }
-      .ph29-comment-input:focus { outline: none; border-color: #8b5cf6; }
-      .ph29-comment-hint { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+      .ph29-comment-label {
+        display: block; font-weight: 600; margin-bottom: 8px;
+        color: var(--text-primary, #fff);
+      }
+      .ph29-comment-input {
+        width: 100%; padding: 12px;
+        background: var(--bg-main, #0f0c20);
+        border: 2px solid var(--border, #322b54);
+        border-radius: 12px; font-family: inherit;
+        font-size: 14px; resize: none; box-sizing: border-box;
+        color: var(--text-primary, #fff);
+        transition: border-color .2s;
+      }
+      .ph29-comment-input::placeholder { color: var(--text-muted, #888); }
+      .ph29-comment-input:focus { outline: none; border-color: var(--primary, #8b5cf6); }
+      .ph29-comment-hint { font-size: 12px; color: var(--text-muted, #888); margin-top: 4px; }
+
+      /* العلامات السريعة */
       .ph29-tags-section { margin-bottom: 20px; }
-      .ph29-tags-label { font-weight: 600; margin-bottom: 8px; color: #374151; }
+      .ph29-tags-label { font-weight: 600; margin-bottom: 8px; color: var(--text-secondary, #bbb); }
       .ph29-tags { display: flex; flex-wrap: wrap; gap: 8px; }
-      .ph29-tag { padding: 6px 12px; background: #f3f4f6; border: none; border-radius: 20px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
-      .ph29-tag:hover { background: #e5e7eb; }
-      .ph29-tag.active { background: #8b5cf6; color: #fff; }
-      .ph29-submit-btn { width: 100%; padding: 16px; background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: #fff; border: none; border-radius: 14px; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s; }
-      .ph29-submit-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(139, 92, 246, 0.4); }
-      
-      /* Rating Card Styles */
-      .ph29-review-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+      .ph29-tag {
+        padding: 6px 14px;
+        background: var(--bg-hover, rgba(255,255,255,.06));
+        border: 1px solid var(--border, #322b54);
+        border-radius: 20px; font-size: 13px; cursor: pointer;
+        color: var(--text-secondary, #bbb);
+        transition: all .2s;
+      }
+      .ph29-tag:hover { border-color: var(--primary, #8b5cf6); color: var(--primary, #8b5cf6); }
+      .ph29-tag.active {
+        background: var(--primary, #8b5cf6);
+        border-color: var(--primary, #8b5cf6);
+        color: #fff;
+      }
+
+      /* زر الإرسال */
+      .ph29-submit-btn {
+        width: 100%; padding: 16px;
+        background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+        color: #fff; border: none; border-radius: 14px;
+        font-size: 16px; font-weight: 700; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+        transition: all .2s;
+      }
+      .ph29-submit-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(139,92,246,.45); }
+
+      /* ── بطاقات التقييمات المعروضة ── */
+      .ph29-review-card {
+        background: var(--bg-card, #1a1631);
+        border: 1px solid var(--border, #322b54);
+        border-radius: 16px; padding: 16px; margin-bottom: 12px;
+        transition: border-color .2s;
+      }
+      .ph29-review-card:hover { border-color: rgba(139,92,246,.35); }
       .ph29-review-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-      .ph29-review-avatar { width: 44px; height: 44px; background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; }
+      .ph29-review-avatar {
+        width: 44px; height: 44px;
+        background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+        color: #fff; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 700; font-size: 18px; flex-shrink: 0;
+      }
       .ph29-review-info { flex: 1; }
-      .ph29-review-user { font-weight: 600; color: #1f2937; }
-      .ph29-review-time { font-size: 12px; color: #9ca3af; }
-      .ph29-review-stars { color: #f59e0b; font-size: 14px; }
-      .ph29-review-comment { color: #374151; line-height: 1.6; margin-bottom: 12px; }
+      .ph29-review-user  { font-weight: 600; color: var(--text-primary, #fff); }
+      .ph29-review-time  { font-size: 12px; color: var(--text-muted, #888); margin-top: 2px; }
+      .ph29-review-stars { color: #f59e0b; font-size: 15px; }
+      .ph29-review-comment { color: var(--text-secondary, #bbb); line-height: 1.7; margin-bottom: 12px; font-size: 14px; }
       .ph29-review-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-      .ph29-review-tag { padding: 4px 10px; background: #f3f4f6; border-radius: 12px; font-size: 12px; color: #6b7280; }
-      .ph29-review-footer { display: flex; justify-content: space-between; padding-top: 12px; border-top: 1px solid #f3f4f6; }
+      .ph29-review-tag {
+        padding: 4px 10px;
+        background: var(--bg-hover, rgba(255,255,255,.06));
+        border-radius: 12px; font-size: 12px;
+        color: var(--text-muted, #888);
+      }
+      .ph29-review-footer {
+        display: flex; justify-content: space-between;
+        padding-top: 12px;
+        border-top: 1px solid var(--border, #322b54);
+      }
       .ph29-verified { font-size: 12px; color: #10b981; }
-      
-      /* Stats Styles */
-      .ph29-stats-container { display: grid; grid-template-columns: 120px 1fr; gap: 24px; background: #fff; border-radius: 16px; padding: 20px; margin-bottom: 20px; }
-      .ph29-stats-main { text-align: center; }
-      .ph29-avg-score { font-size: 48px; font-weight: 800; color: #1f2937; line-height: 1; }
-      .ph29-avg-stars { font-size: 20px; margin: 8px 0; }
-      .ph29-total-count { color: #6b7280; font-size: 14px; }
-      .ph29-distribution { display: flex; flex-direction: column; gap: 8px; }
-      .ph29-dist-row { display: flex; align-items: center; gap: 8px; }
-      .ph29-dist-stars { width: 40px; font-size: 12px; color: #6b7280; }
-      .ph29-dist-bar { flex: 1; height: 8px; background: #f3f4f6; border-radius: 4px; overflow: hidden; }
-      .ph29-dist-fill { height: 100%; background: linear-gradient(90deg, #10b981, #34d399); border-radius: 4px; transition: width 0.3s; }
-      .ph29-dist-count { width: 30px; text-align: left; font-size: 13px; color: #6b7280; }
-      .ph29-no-ratings { text-align: center; padding: 40px; color: #9ca3af; }
-      
-      /* Dark theme adjustments */
-      body:not(.light-theme) .ph29-rating-section { background: var(--bg-card); border-color: var(--border); }
-      body:not(.light-theme) .ph29-comment-input { background: var(--bg-main); border-color: var(--border); color: var(--text-main); }
-      body:not(.light-theme) .ph29-comment-label { color: var(--text-main); }
-      body:not(.light-theme) .ph29-rating-label { color: var(--text-main); }
-      body:not(.light-theme) .ph29-tags-label { color: var(--text-main); }
-      body:not(.light-theme) .ph29-tag { background: var(--bg-hover); color: var(--text-secondary); }
-      body:not(.light-theme) .ph29-tag:hover { background: var(--bg-hover); filter: brightness(1.2); }
-      body:not(.light-theme) .ph29-review-card { background: var(--bg-card); border-color: var(--border); }
-      body:not(.light-theme) .ph29-review-user { color: var(--text-main); }
-      body:not(.light-theme) .ph29-review-comment { color: var(--text-secondary); }
-      body:not(.light-theme) .ph29-review-tag { background: var(--bg-hover); color: var(--text-secondary); }
-      body:not(.light-theme) .ph29-comment-section .ph29-comment-label { color: var(--text-main); }
-      body:not(.light-theme) .ph29-tags-label { color: var(--text-main); }
-      body:not(.light-theme) .ph29-stats-container { background: var(--bg-card); border: 1px solid var(--border); }
-      body:not(.light-theme) .ph29-avg-score { color: var(--text-main); }
-      body:not(.light-theme) .ph29-total-count { color: var(--text-secondary); }
-      body:not(.light-theme) .ph29-dist-stars { color: var(--text-secondary); }
-      body:not(.light-theme) .ph29-dist-count { color: var(--text-secondary); }
-      body:not(.light-theme) .ph29-dist-bar { background: var(--bg-hover); }
-      body:not(.light-theme) .ph29-selected-rating { color: var(--text-secondary); }
-      
+
+      /* ── إحصائيات التقييم ── */
+      .ph29-stats-container {
+        display: grid; grid-template-columns: 120px 1fr; gap: 24px;
+        background: var(--bg-card, #1a1631);
+        border: 1px solid var(--border, #322b54);
+        border-radius: 16px; padding: 20px; margin-bottom: 20px;
+      }
+      .ph29-stats-main  { text-align: center; }
+      .ph29-avg-score   { font-size: 52px; font-weight: 900; color: var(--primary, #8b5cf6); line-height: 1; }
+      .ph29-avg-stars   { font-size: 20px; margin: 8px 0; }
+      .ph29-total-count { color: var(--text-muted, #888); font-size: 14px; }
+      .ph29-distribution { display: flex; flex-direction: column; gap: 8px; justify-content: center; }
+      .ph29-dist-row    { display: flex; align-items: center; gap: 8px; }
+      .ph29-dist-stars  { width: 40px; font-size: 12px; color: var(--text-muted, #888); }
+      .ph29-dist-bar    { flex: 1; height: 8px; background: var(--bg-hover, rgba(255,255,255,.08)); border-radius: 4px; overflow: hidden; }
+      .ph29-dist-fill   { height: 100%; background: linear-gradient(90deg, #8b5cf6, #a78bfa); border-radius: 4px; transition: width .4s ease; }
+      .ph29-dist-count  { width: 30px; text-align: left; font-size: 13px; color: var(--text-muted, #888); }
+      .ph29-no-ratings  { text-align: center; padding: 40px; color: var(--text-muted, #888); font-size: 15px; }
+
+      /* ── الوضع الفاتح (Light) ── */
+      body.light-theme .ph29-rating-section   { background: #ffffff; border-color: #e9e5f2; }
+      body.light-theme .ph29-rating-label     { color: #181528; }
+      body.light-theme .ph29-comment-input    { background: #f8f7fd; border-color: #e9e5f2; color: #181528; }
+      body.light-theme .ph29-comment-label    { color: #181528; }
+      body.light-theme .ph29-comment-hint     { color: #9ca3af; }
+      body.light-theme .ph29-tags-label       { color: #4b5563; }
+      body.light-theme .ph29-tag              { background: #f3f0fd; border-color: #e9e5f2; color: #4b5563; }
+      body.light-theme .ph29-tag:hover        { border-color: #8b5cf6; color: #7c3aed; }
+      body.light-theme .ph29-review-card      { background: #ffffff; border-color: #e9e5f2; }
+      body.light-theme .ph29-review-user      { color: #181528; }
+      body.light-theme .ph29-review-comment   { color: #4b5563; }
+      body.light-theme .ph29-review-tag       { background: #f3f0fd; color: #6b7280; }
+      body.light-theme .ph29-review-footer    { border-top-color: #e9e5f2; }
+      body.light-theme .ph29-stats-container  { background: #ffffff; border-color: #e9e5f2; }
+      body.light-theme .ph29-avg-score        { color: #7c3aed; }
+      body.light-theme .ph29-dist-bar         { background: #f0edfc; }
+      body.light-theme .ph29-selected-rating  { color: #6b7280; }
+      body.light-theme .ph29-svc-name         { color: #181528; }
+
       @media (max-width: 640px) {
         .ph29-stats-container { grid-template-columns: 1fr; text-align: center; }
         .ph29-distribution { margin-top: 16px; }

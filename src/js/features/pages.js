@@ -992,7 +992,7 @@ function renderMyOrders() {
           ${o.status==='awaiting_payment' ? `
             <button class="btn btn-success btn-sm" onclick="ph_payProfessionOrder('${o.id}')">💳 دفع الآن</button>
           `:''}
-          ${o.status==='completed' && !AppData.ratings.find(r=>r.orderId===o.id&&r.customerId===u.uid) ?
+          ${(o.status==='completed' || o.status==='delivered') && !AppData.ratings.find(r=>r.orderId===o.id&&r.customerId===u.uid) ?
             `<button class="btn btn-primary btn-sm" onclick="(typeof ph36_showOrderRatingModal==='function'?ph36_showOrderRatingModal:ph29_showRatingModal)('${o.id}')">⭐ قيّم الطلب</button>` : ''}
           ${o.status==='with_driver' && o.driverPhone ?
             `<a href="https://wa.me/${o.driverPhone}" target="_blank" class="btn btn-sm" style="background:#25d366;color:#fff">💬 تواصل مع المندوب</a>` : ''}

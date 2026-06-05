@@ -267,7 +267,7 @@
 .bk-period-seg {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   background: rgba(0,0,0,0.15);
   border-radius: 7px;
   padding: 2px;

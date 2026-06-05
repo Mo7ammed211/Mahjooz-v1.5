@@ -2221,6 +2221,12 @@ window.ph46_saveItem = async function(sectionId) {
   const discountDays = parseInt(document.getElementById('ph46-discount-days')?.value) || 0;
   const discountLabel = document.getElementById('ph46-discount-label')?.value.trim() || '';
 
+  // حجز الفترات اليومية المخصصة
+  const isShiftBooking = document.getElementById('ph46-item-shift-booking')?.checked || false;
+  const priceMorning = parseFloat(document.getElementById('ph46-item-price-morning')?.value);
+  const priceEvening = parseFloat(document.getElementById('ph46-item-price-evening')?.value);
+  const priceFullDay = parseFloat(document.getElementById('ph46-item-price-fullday')?.value);
+
   const isProfession = sectionId === 'professions';
   const priceType = isProfession 
     ? (document.querySelector('input[name="ph46-price-type"]:checked')?.value || 'fixed')
@@ -2237,6 +2243,12 @@ window.ph46_saveItem = async function(sectionId) {
   }
   if (!name) { toast('يرجى كتابة اسم المنتج أو الخدمة', 'error'); return; }
   if (priceType === 'fixed' && isNaN(price)) { toast('يرجى كتابة السعر الأساسي', 'error'); return; }
+
+  // تحقق من صحة أسعار الفترات إذا تم تفعيلها
+  if (isShiftBooking && isNaN(priceMorning) && isNaN(priceEvening) && isNaN(priceFullDay)) {
+    toast('يرجى كتابة سعر واحد على الأقل للفترات المخصصة', 'error');
+    return;
+  }
 
   // التحقق من الاسم المكرر
   const allItems = AppData.catalogItems || [];
@@ -2267,6 +2279,10 @@ window.ph46_saveItem = async function(sectionId) {
       lng,
       requiresDriver,
       allowMultiDate,
+      isShiftBooking,
+      priceMorning: isShiftBooking && !isNaN(priceMorning) ? priceMorning : null,
+      priceEvening: isShiftBooking && !isNaN(priceEvening) ? priceEvening : null,
+      priceFullDay: isShiftBooking && !isNaN(priceFullDay) ? priceFullDay : null,
       discountActive,
       discountPct: discountActive ? discountPct : 0,
       discountDays: discountActive ? discountDays : 0,
@@ -2344,6 +2360,11 @@ window.ph46_togglePriceType = function(val) {
 
 window.ph46_toggleDiscountSection = function(checked) {
   const fields = document.getElementById('ph46-discount-fields');
+  if (fields) fields.style.display = checked ? 'block' : 'none';
+};
+
+window.ph46_toggleShiftBookingFields = function(checked) {
+  const fields = document.getElementById('ph46-shift-booking-fields');
   if (fields) fields.style.display = checked ? 'block' : 'none';
 };
 
@@ -2585,6 +2606,32 @@ window.ph46_showAddItemModalDirect = function(sectionId, catId = null) {
           <div class="form-group" style="margin-top:12px;">
             <label class="form-label">${labels.depositLabel}</label>
             <input class="form-control" type="number" id="ph46-item-deposit" value="0">
+          </div>
+          <div style="margin-top:14px; padding:12px; background:rgba(139,92,246,0.06); border:1px solid rgba(139,92,246,0.18); border-radius:10px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:700; color:var(--primary);">
+              <input type="checkbox" id="ph46-item-shift-booking" style="width:18px; height:18px;" 
+                onchange="window.ph46_toggleShiftBookingFields(this.checked)">
+              <span>تفعيل حجز الفترات اليومية المخصصة (حجز مجزأ)</span>
+            </label>
+            <div id="ph46-shift-booking-fields" style="display:none; margin-top:12px;">
+              <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+                <div class="form-group">
+                  <label class="form-label" style="font-size:12px;">🌅 سعر فترة النهار (الصباح)</label>
+                  <input class="form-control" type="number" id="ph46-item-price-morning" placeholder="مثال: 50000">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" style="font-size:12px;">🌆 سعر فترة المساء</label>
+                  <input class="form-control" type="number" id="ph46-item-price-evening" placeholder="مثال: 50000">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" style="font-size:12px;">☀️ سعر اليوم الكامل</label>
+                  <input class="form-control" type="number" id="ph46-item-price-fullday" placeholder="مثال: 100000">
+                </div>
+              </div>
+              <div style="font-size:11px; color:var(--text-muted); margin-top:8px; line-height:1.4;">
+                💡 عند التفعيل، سيتم اعتماد هذه الأسعار المخصصة للفترات بدلاً من السعر الأساسي ومضاعفاته.
+              </div>
+            </div>
           </div>
           ` : ''}
 
@@ -2860,6 +2907,33 @@ window.ph46_showEditItemModal = function(itemId) {
           <div class="form-group" style="margin-top:12px;">
             <label class="form-label">${labels.depositLabel}</label>
             <input class="form-control" type="number" id="ph46-item-deposit" value="${item.deposit || 0}">
+          </div>
+          <div style="margin-top:14px; padding:12px; background:rgba(139,92,246,0.06); border:1px solid rgba(139,92,246,0.18); border-radius:10px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:700; color:var(--primary);">
+              <input type="checkbox" id="ph46-item-shift-booking" style="width:18px; height:18px;" 
+                ${item.isShiftBooking ? 'checked' : ''} 
+                onchange="window.ph46_toggleShiftBookingFields(this.checked)">
+              <span>تفعيل حجز الفترات اليومية المخصصة (حجز مجزأ)</span>
+            </label>
+            <div id="ph46-shift-booking-fields" style="display:${item.isShiftBooking ? 'block' : 'none'}; margin-top:12px;">
+              <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+                <div class="form-group">
+                  <label class="form-label" style="font-size:12px;">🌅 سعر فترة النهار (الصباح)</label>
+                  <input class="form-control" type="number" id="ph46-item-price-morning" placeholder="مثال: 50000" value="${item.priceMorning !== undefined && item.priceMorning !== null ? item.priceMorning : ''}">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" style="font-size:12px;">🌆 سعر فترة المساء</label>
+                  <input class="form-control" type="number" id="ph46-item-price-evening" placeholder="مثال: 50000" value="${item.priceEvening !== undefined && item.priceEvening !== null ? item.priceEvening : ''}">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" style="font-size:12px;">☀️ سعر اليوم الكامل</label>
+                  <input class="form-control" type="number" id="ph46-item-price-fullday" placeholder="مثال: 100000" value="${item.priceFullDay !== undefined && item.priceFullDay !== null ? item.priceFullDay : ''}">
+                </div>
+              </div>
+              <div style="font-size:11px; color:var(--text-muted); margin-top:8px; line-height:1.4;">
+                💡 عند التفعيل، سيتم اعتماد هذه الأسعار المخصصة للفترات بدلاً من السعر الأساسي ومضاعفاته.
+              </div>
+            </div>
           </div>
           ` : ''}
 
