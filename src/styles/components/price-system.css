@@ -1,0 +1,194 @@
+/* ══════════════════════════════════════════════════════
+   نظام عرض الأسعار الموحّد — Mahjooz Price System
+   يُطبَّق على جميع الأقسام: الخدمات، المتاجر، التأجير، الرقمية
+   ══════════════════════════════════════════════════════ */
+
+/* ─── حاوية السعر الأساسية ─────────────────────────── */
+.ph-price-block {
+  display: inline-flex !important;
+  align-items: baseline !important;
+  gap: 5px !important;
+  flex-wrap: wrap !important;
+  flex-direction: row !important;
+  line-height: 1.2 !important;
+}
+
+/* ─── الرقم الرئيسي للسعر ──────────────────────────── */
+.ph-price-num {
+  font-size: 22px !important;
+  font-weight: 900 !important;
+  color: #a78bfa !important;
+  letter-spacing: -0.5px !important;
+  line-height: 1 !important;
+  font-variant-numeric: tabular-nums !important;
+  text-shadow: 0 0 20px rgba(139,92,246,0.3) !important;
+}
+
+/* ─── وحدة العملة (ريال) ────────────────────────────── */
+.ph-price-cur {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  color: #a78bfa !important;
+  opacity: 0.65 !important;
+  line-height: 1 !important;
+  letter-spacing: 0.5px !important;
+  align-self: flex-end !important;
+  margin-bottom: 2px !important;
+  display: inline-block !important;
+}
+
+/* ─── نص "يبدأ من" ──────────────────────────────────── */
+.ph-price-label {
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  color: var(--text-muted) !important;
+  opacity: 0.8 !important;
+  align-self: center !important;
+  letter-spacing: 0.3px !important;
+}
+
+/* ─── السعر بعد الخصم (أخضر مشرق) ──────────────────── */
+.ph-price-offer {
+  display: inline-flex !important;
+  align-items: baseline !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+  flex-direction: row !important;
+}
+
+.ph-price-offer .ph-price-discounted {
+  font-size: 22px !important;
+  font-weight: 900 !important;
+  color: #10b981 !important;
+  letter-spacing: -0.5px !important;
+  line-height: 1 !important;
+  text-shadow: 0 0 16px rgba(16,185,129,0.35) !important;
+}
+
+.ph-price-offer .ph-price-discounted .ph-price-cur {
+  color: #34d399 !important;
+  opacity: 0.85 !important;
+}
+
+/* ─── السعر الأصلي المشطوب ───────────────────────────── */
+.ph-price-offer .ph-price-original {
+  font-size: 12px !important;
+  color: var(--text-muted) !important;
+  text-decoration: line-through !important;
+  opacity: 0.65 !important;
+  font-weight: 500 !important;
+  align-self: center !important;
+}
+
+/* ─── بطاقة التوفير (وفّر X ريال) ───────────────────── */
+.ph-price-save {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.09) !important;
+  border: 1px solid rgba(239, 68, 68, 0.22) !important;
+  border-radius: 6px !important;
+  padding: 2px 7px !important;
+  align-self: center !important;
+  white-space: nowrap !important;
+  letter-spacing: 0.2px !important;
+}
+
+/* ─── سعر "عند التواصل" ─────────────────────────────── */
+.ph-price-on-contact {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  color: var(--text-secondary) !important;
+  font-style: italic !important;
+  opacity: 0.8 !important;
+}
+
+/* ─── متغيّر: سعر داخل المودال (أكبر) ─────────────── */
+.ph-price-modal .ph-price-num,
+.ph-price-modal .ph-price-discounted {
+  font-size: 28px !important;
+  letter-spacing: -1px !important;
+}
+
+.ph-price-modal .ph-price-cur {
+  font-size: 14px !important;
+}
+
+/* ─── تخصيصات كروت المنتجات والخدمات (تصغير نسبي لتناسب الكروت) ─── */
+.ph43-product-price-block .ph-price-num,
+.ph43-product-price-block .ph-price-discounted,
+.ph43-product-price .ph-price-num,
+.ph43-product-price .ph-price-discounted,
+.service-footer .ph-price-num,
+.service-footer .ph-price-discounted,
+.ph-price-digital .ph-price-num,
+.ph-price-digital .ph-price-discounted {
+  font-size: 18px !important;
+}
+
+.ph43-product-price-block .ph-price-cur,
+.ph43-product-price .ph-price-cur,
+.service-footer .ph-price-cur,
+.ph-price-digital .ph-price-cur {
+  font-size: 10px !important;
+}
+
+.ph43-product-price-block .ph-price-original,
+.ph43-product-price .ph-price-original,
+.service-footer .ph-price-original,
+.ph-price-digital .ph-price-original {
+  font-size: 11px !important;
+}
+
+/* التأكد من عرض الأسعار كـ Row أفقي داخل كروت المنتجات والخدمات */
+.ph43-product-price-block .ph-price-block,
+.ph43-product-price-block .ph-price-offer,
+.ph43-product-price .ph-price-block,
+.ph43-product-price .ph-price-offer,
+.service-footer .ph-price-block,
+.service-footer .ph-price-offer,
+.ph-price-digital.ph-price-block,
+.ph-price-digital.ph-price-offer {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: baseline !important;
+  gap: 4px !important;
+  flex-wrap: wrap !important;
+}
+
+/* ─── Light Theme overrides ──────────────────────────── */
+body.light-theme .ph-price-num {
+  color: var(--primary) !important;
+  text-shadow: none !important;
+}
+
+body.light-theme .ph-price-cur {
+  color: var(--primary) !important;
+  opacity: 0.8 !important;
+}
+
+body.light-theme .ph-price-offer .ph-price-discounted {
+  color: #059669 !important;
+  text-shadow: none !important;
+}
+
+body.light-theme .ph-price-offer .ph-price-discounted .ph-price-cur {
+  color: #059669 !important;
+  opacity: 0.8 !important;
+}
+
+body.light-theme .ph-price-save {
+  background: rgba(239, 68, 68, 0.07) !important;
+  border-color: rgba(239, 68, 68, 0.18) !important;
+}
+
+/* ─── رسوم متحركة دقيقة عند التحميل ─────────────────── */
+.ph-price-block,
+.ph-price-offer {
+  animation: ph-price-fade 0.3s ease forwards;
+}
+
+@keyframes ph-price-fade {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

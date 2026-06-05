@@ -1,0 +1,1344 @@
+'use strict';
+/* ══════════════════════════════════════════════════════════════════════
+   قاعدة بيانات مزودين الخدمات — Phase 47
+   بنية هرمية: تصنيفات → فئات فرعية → مزودون → عناوين + صور
+   مرئية فقط للإدارة ومندوبي التوصيل
+   ══════════════════════════════════════════════════════════════════════ */
+
+// ── ثوابت Firestore ──────────────────────────────────────────────────
+const PDB_CATS_COL    = 'pdb_cats';
+const PDB_SUBCATS_COL = 'pdb_subcats';
+const PDB_ENTRIES_COL = 'pdb_entries';
+
+// ── تهيئة الحالة ─────────────────────────────────────────────────────
+function _pdbState() {
+  if (!State._pdb) {
+    State._pdb = {
+      view:     'cats',   // 'cats' | 'subcats' | 'entries' | 'entry'
+      catId:    null,
+      subcatId: null,
+      entryId:  null,
+      search:   '',
+    };
+  }
+  return State._pdb;
+}
+
+// ── تحميل البيانات ───────────────────────────────────────────────────
+window.pdb_reload = async function () {
+  try {
+    const [cats, subcats, entries] = await Promise.all([
+      db.collection(PDB_CATS_COL).orderBy('order','asc').get().catch(() => db.collection(PDB_CATS_COL).get()),
+      db.collection(PDB_SUBCATS_COL).orderBy('order','asc').get().catch(() => db.collection(PDB_SUBCATS_COL).get()),
+      db.collection(PDB_ENTRIES_COL).orderBy('createdAt','desc').get().catch(() => db.collection(PDB_ENTRIES_COL).get()),
+    ]);
+    AppData.pdbCats    = cats.docs.map(d => ({ id: d.id, ...d.data() }));
+    AppData.pdbSubcats = subcats.docs.map(d => ({ id: d.id, ...d.data() }));
+    AppData.pdbEntries = entries.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    console.error('pdb_reload error', e);
+    AppData.pdbCats    = AppData.pdbCats    || [];
+    AppData.pdbSubcats = AppData.pdbSubcats || [];
+    AppData.pdbEntries = AppData.pdbEntries || [];
+  }
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  المدخل الرئيسي للعرض
+// ══════════════════════════════════════════════════════════════════════
+window.renderAdminProvidersDatabase = function () {
+  const st = _pdbState();
+  try {
+    if (st.view === 'entry')    return _pdb_renderEntryDetail();
+    if (st.view === 'entries')  return _pdb_renderEntriesList();
+    if (st.view === 'subcats')  return _pdb_renderSubcatsList();
+    return _pdb_renderCatsList();
+  } catch (err) {
+    console.error('renderAdminProvidersDatabase error', err);
+    return `<div style="padding:30px;color:#ef4444;font-family:monospace;white-space:pre-wrap;">${err.message}\n${err.stack}</div>`;
+  }
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  ① صفحة التصنيفات الرئيسية
+// ══════════════════════════════════════════════════════════════════════
+function _pdb_renderCatsList() {
+  const cats    = AppData.pdbCats    || [];
+  const subcats = AppData.pdbSubcats || [];
+  const entries = AppData.pdbEntries || [];
+
+  const totalEntries = entries.length;
+  const totalSubcats = subcats.length;
+
+  const catCards = cats.map(c => {
+    const cSubs    = subcats.filter(s => s.catId === c.id);
+    const cEntries = entries.filter(e => e.catId === c.id);
+    const isActive = c.active !== false;
+    return `
+    <div class="pdb-cat-card" onclick="pdb_goSubcats('${c.id}')" style="opacity:${isActive ? 1 : 0.65}">
+      <div class="pdb-cat-top-bar"></div>
+      <div class="pdb-cat-body">
+        <div class="pdb-cat-icon-wrap">${escHtml(c.icon || '🏢')}</div>
+        <div class="pdb-cat-title">${escHtml(c.name)}</div>
+        ${c.desc ? `<div class="pdb-cat-desc">${escHtml(c.desc)}</div>` : '<div class="pdb-cat-desc"></div>'}
+        <div class="pdb-cat-stats">
+          <div class="pdb-cat-stat">
+            <div class="pdb-cat-stat-val">${cSubs.length}</div>
+            <div class="pdb-cat-stat-lbl">فئة فرعية</div>
+          </div>
+          <div class="pdb-cat-stat-divider"></div>
+          <div class="pdb-cat-stat">
+            <div class="pdb-cat-stat-val">${cEntries.length}</div>
+            <div class="pdb-cat-stat-lbl">مزود</div>
+          </div>
+          ${!isActive ? `<div class="pdb-cat-stat-divider"></div><div class="pdb-cat-stat"><div class="pdb-cat-stat-val" style="color:#f59e0b;font-size:14px;">⚠️</div><div class="pdb-cat-stat-lbl" style="color:#f59e0b;">معطّل</div></div>` : ''}
+        </div>
+      </div>
+      <div class="pdb-cat-footer">
+        <div class="pdb-cat-actions" onclick="event.stopPropagation()">
+          <button class="pdb-icon-btn" onclick="pdb_openEditCatModal('${c.id}')" title="تعديل">✏️</button>
+          <button class="pdb-icon-btn danger" onclick="pdb_confirmDeleteCat('${c.id}','${escAttr(c.name)}')" title="حذف">🗑️</button>
+        </div>
+        <span class="pdb-cat-arrow">‹</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+  ${_pdb_styles()}
+  <div class="pdb-wrap">
+
+    <!-- الترويسة -->
+    <div class="pdb-page-header">
+      <div>
+        <h2 class="pdb-page-title">🏢 قاعدة بيانات مزودين الخدمات</h2>
+        <p class="pdb-page-sub">إدارة هرمية: تصنيفات ← فئات فرعية ← مزودون ← عناوين وصور</p>
+      </div>
+      <button class="pdb-btn pdb-btn-primary" onclick="pdb_openAddCatModal()">＋ تصنيف جديد</button>
+    </div>
+
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px;">
+      <div style="display:flex;align-items:center;gap:14px;padding:18px 20px;background:rgba(139,92,246,0.07);border:1.5px solid rgba(139,92,246,0.2);border-radius:16px;">
+        <div style="width:48px;height:48px;min-width:48px;border-radius:14px;background:rgba(139,92,246,0.15);display:flex;align-items:center;justify-content:center;font-size:22px;line-height:1;">🏢</div>
+        <div style="min-width:0;">
+          <div style="font-size:26px;font-weight:900;color:#c4b5fd;line-height:1.1;">${cats.length}</div>
+          <div style="font-size:12px;color:rgba(196,181,253,0.7);margin-top:3px;font-family:'Cairo',sans-serif;">تصنيف رئيسي</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;padding:18px 20px;background:rgba(16,185,129,0.07);border:1.5px solid rgba(16,185,129,0.2);border-radius:16px;">
+        <div style="width:48px;height:48px;min-width:48px;border-radius:14px;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center;font-size:22px;line-height:1;">📂</div>
+        <div style="min-width:0;">
+          <div style="font-size:26px;font-weight:900;color:#6ee7b7;line-height:1.1;">${totalSubcats}</div>
+          <div style="font-size:12px;color:rgba(110,231,183,0.7);margin-top:3px;font-family:'Cairo',sans-serif;">فئة فرعية</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;padding:18px 20px;background:rgba(59,130,246,0.07);border:1.5px solid rgba(59,130,246,0.2);border-radius:16px;">
+        <div style="width:48px;height:48px;min-width:48px;border-radius:14px;background:rgba(59,130,246,0.15);display:flex;align-items:center;justify-content:center;font-size:22px;line-height:1;">👤</div>
+        <div style="min-width:0;">
+          <div style="font-size:26px;font-weight:900;color:#93c5fd;line-height:1.1;">${totalEntries}</div>
+          <div style="font-size:12px;color:rgba(147,197,253,0.7);margin-top:3px;font-family:'Cairo',sans-serif;">مزود خدمة</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;padding:18px 20px;background:rgba(245,158,11,0.07);border:1.5px solid rgba(245,158,11,0.2);border-radius:16px;">
+        <div style="width:48px;height:48px;min-width:48px;border-radius:14px;background:rgba(245,158,11,0.15);display:flex;align-items:center;justify-content:center;font-size:22px;line-height:1;">📍</div>
+        <div style="min-width:0;">
+          <div style="font-size:26px;font-weight:900;color:#fcd34d;line-height:1.1;">${entries.reduce((acc,e) => acc + (e.addresses||[]).length, 0)}</div>
+          <div style="font-size:12px;color:rgba(252,211,77,0.7);margin-top:3px;font-family:'Cairo',sans-serif;">عنوان مسجّل</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- قائمة التصنيفات -->
+    ${cats.length === 0 ? `
+    <div class="pdb-empty">
+      <div class="pdb-empty-icon">🏢</div>
+      <h3>لا توجد تصنيفات بعد</h3>
+      <p>أنشئ تصنيفاً لتبدأ بتنظيم مزودي الخدمات</p>
+      <button class="pdb-btn pdb-btn-primary" onclick="pdb_openAddCatModal()">＋ إضافة أول تصنيف</button>
+    </div>` : `
+    <div class="pdb-cats-grid">
+      ${catCards}
+    </div>`}
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ② صفحة الفئات الفرعية
+// ══════════════════════════════════════════════════════════════════════
+function _pdb_renderSubcatsList() {
+  const st      = _pdbState();
+  const cats    = AppData.pdbCats    || [];
+  const subcats = AppData.pdbSubcats || [];
+  const entries = AppData.pdbEntries || [];
+
+  const cat     = cats.find(c => c.id === st.catId);
+  const mySubcats = subcats.filter(s => s.catId === st.catId);
+  const sq = (st.search || '').toLowerCase().trim();
+  const filtered = sq ? mySubcats.filter(s => (s.name||'').toLowerCase().includes(sq)) : mySubcats;
+
+  return `
+  ${_pdb_styles()}
+  <div class="pdb-wrap">
+
+    <!-- شريط التنقل -->
+    ${_pdb_breadcrumb([
+      { label: '🏢 قاعدة المزودين', onclick: "pdb_goHome()" },
+      { label: escHtml(cat?.name || '—') }
+    ])}
+
+    <!-- الترويسة -->
+    <div class="pdb-page-header">
+      <div>
+        <h2 class="pdb-page-title">${escHtml(cat?.icon || '🏢')} ${escHtml(cat?.name || '—')}</h2>
+        <p class="pdb-page-sub">${escHtml(cat?.desc || 'الفئات الفرعية لهذا التصنيف')}</p>
+      </div>
+      <button class="pdb-btn pdb-btn-primary" onclick="pdb_openAddSubcatModal('${st.catId}')">＋ فئة فرعية</button>
+    </div>
+
+    <!-- بحث -->
+    <div class="pdb-search-row">
+      <div class="pdb-search-wrap">
+        <span class="pdb-search-icon">🔍</span>
+        <input class="pdb-search-input" placeholder="ابحث في الفئات الفرعية..."
+               value="${escAttr(st.search || '')}"
+               oninput="State._pdb.search=this.value; render()">
+      </div>
+    </div>
+
+    <!-- قائمة الفئات الفرعية -->
+    ${filtered.length === 0 ? `
+    <div class="pdb-empty">
+      <div class="pdb-empty-icon">📂</div>
+      <h3>${sq ? 'لا توجد نتائج' : 'لا توجد فئات فرعية بعد'}</h3>
+      <p>${sq ? 'جرّب كلمة بحث مختلفة' : 'أضف فئات فرعية لتنظيم المزودين داخل هذا التصنيف'}</p>
+      ${!sq ? `<button class="pdb-btn pdb-btn-primary" onclick="pdb_openAddSubcatModal('${st.catId}')">＋ إضافة فئة فرعية</button>` : ''}
+    </div>` : `
+    <div class="pdb-subcats-list">
+      ${filtered.map(s => {
+        const sEntries = entries.filter(e => e.subcatId === s.id);
+        return `
+        <div class="pdb-subcat-row" onclick="pdb_goEntries('${s.id}')">
+          <div class="pdb-subcat-icon">${escHtml(s.icon || '📂')}</div>
+          <div class="pdb-subcat-body">
+            <div class="pdb-subcat-name">${escHtml(s.name)}</div>
+            ${s.desc ? `<div class="pdb-subcat-desc">${escHtml(s.desc)}</div>` : ''}
+          </div>
+          <div class="pdb-subcat-meta">
+            <span class="pdb-stat-chip">👤 ${sEntries.length} مزود</span>
+          </div>
+          <div class="pdb-subcat-actions" onclick="event.stopPropagation()">
+            <button class="pdb-icon-btn" onclick="pdb_openEditSubcatModal('${s.id}')" title="تعديل">✏️</button>
+            <button class="pdb-icon-btn danger" onclick="pdb_confirmDeleteSubcat('${s.id}','${escAttr(s.name)}')" title="حذف">🗑️</button>
+          </div>
+          <div class="pdb-subcat-arrow">›</div>
+        </div>`;
+      }).join('')}
+    </div>`}
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ③ صفحة قائمة المزودين
+// ══════════════════════════════════════════════════════════════════════
+function _pdb_renderEntriesList() {
+  const st      = _pdbState();
+  const cats    = AppData.pdbCats    || [];
+  const subcats = AppData.pdbSubcats || [];
+  const entries = AppData.pdbEntries || [];
+
+  const cat    = cats.find(c => c.id === st.catId);
+  const subcat = subcats.find(s => s.id === st.subcatId);
+  const myEntries = entries.filter(e => e.subcatId === st.subcatId);
+  const sq = (st.search || '').toLowerCase().trim();
+  const filtered = sq
+    ? myEntries.filter(e => (e.name||'').toLowerCase().includes(sq) || (e.phone||'').includes(sq))
+    : myEntries;
+
+  return `
+  ${_pdb_styles()}
+  <div class="pdb-wrap">
+
+    ${_pdb_breadcrumb([
+      { label: '🏢 قاعدة المزودين', onclick: "pdb_goHome()" },
+      { label: escHtml(cat?.name || '—'), onclick: `pdb_goSubcats('${st.catId}')` },
+      { label: escHtml(subcat?.name || '—') }
+    ])}
+
+    <div class="pdb-page-header">
+      <div>
+        <h2 class="pdb-page-title">${escHtml(subcat?.icon || '📂')} ${escHtml(subcat?.name || '—')}</h2>
+        <p class="pdb-page-sub">${escHtml(subcat?.desc || '')} • ${myEntries.length} مزود خدمة</p>
+      </div>
+      <button class="pdb-btn pdb-btn-primary" onclick="pdb_openAddEntryModal('${st.catId}','${st.subcatId}')">＋ مزود جديد</button>
+    </div>
+
+    <div class="pdb-search-row">
+      <div class="pdb-search-wrap">
+        <span class="pdb-search-icon">🔍</span>
+        <input class="pdb-search-input" placeholder="ابحث بالاسم أو الهاتف..."
+               value="${escAttr(st.search || '')}"
+               oninput="State._pdb.search=this.value; render()">
+      </div>
+    </div>
+
+    ${filtered.length === 0 ? `
+    <div class="pdb-empty">
+      <div class="pdb-empty-icon">👤</div>
+      <h3>${sq ? 'لا توجد نتائج' : 'لا يوجد مزودون بعد'}</h3>
+      <p>${sq ? 'جرّب كلمة بحث مختلفة' : 'أضف مزودي الخدمات في هذه الفئة الفرعية'}</p>
+      ${!sq ? `<button class="pdb-btn pdb-btn-primary" onclick="pdb_openAddEntryModal('${st.catId}','${st.subcatId}')">＋ إضافة مزود</button>` : ''}
+    </div>` : `
+    <div class="pdb-entries-grid">
+      ${filtered.map(e => {
+        const addrCount = (e.addresses || []).length;
+        const mainImg   = (e.addresses || []).find(a => a.images && a.images[0])?.images[0] || '';
+        return `
+        <div class="pdb-entry-card" onclick="pdb_goEntry('${e.id}')">
+          <div class="pdb-entry-avatar">
+            ${mainImg
+              ? `<img src="${escAttr(mainImg)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`
+              : `<span style="font-size:24px">${(e.name||'م').charAt(0)}</span>`}
+          </div>
+          <div class="pdb-entry-body">
+            <div class="pdb-entry-name">${escHtml(e.name || '—')}</div>
+            <div class="pdb-entry-phone">📞 ${escHtml(e.phone || '—')}</div>
+            ${e.notes ? `<div class="pdb-entry-notes">${escHtml(e.notes.substring(0,60))}${e.notes.length>60?'…':''}</div>` : ''}
+            <div class="pdb-entry-chips">
+              <span class="pdb-stat-chip">📍 ${addrCount} عنوان</span>
+              ${e.active === false ? `<span class="pdb-stat-chip pdb-chip-warn">⚠️ معطّل</span>` : `<span class="pdb-stat-chip pdb-chip-ok">✅ نشط</span>`}
+            </div>
+          </div>
+          <div class="pdb-entry-actions" onclick="event.stopPropagation()">
+            <button class="pdb-icon-btn" onclick="pdb_openEditEntryModal('${e.id}')" title="تعديل">✏️</button>
+            <button class="pdb-icon-btn danger" onclick="pdb_confirmDeleteEntry('${e.id}','${escAttr(e.name||'')}')" title="حذف">🗑️</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`}
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ④ صفحة تفاصيل المزود (عناوينه + صوره)
+// ══════════════════════════════════════════════════════════════════════
+function _pdb_renderEntryDetail() {
+  const st      = _pdbState();
+  const cats    = AppData.pdbCats    || [];
+  const subcats = AppData.pdbSubcats || [];
+  const entries = AppData.pdbEntries || [];
+
+  const entry  = entries.find(e => e.id === st.entryId);
+  if (!entry) return `<div class="pdb-wrap" style="padding:40px;text-align:center;color:var(--text-muted)">المزود غير موجود <button class="pdb-btn pdb-btn-secondary" style="margin-top:12px" onclick="pdb_goHome()">رجوع</button></div>`;
+
+  const cat    = cats.find(c => c.id === entry.catId);
+  const subcat = subcats.find(s => s.id === entry.subcatId);
+  const addresses = entry.addresses || [];
+
+  return `
+  ${_pdb_styles()}
+  <div class="pdb-wrap">
+
+    ${_pdb_breadcrumb([
+      { label: '🏢 قاعدة المزودين', onclick: "pdb_goHome()" },
+      { label: escHtml(cat?.name || '—'), onclick: `pdb_goSubcats('${entry.catId}')` },
+      { label: escHtml(subcat?.name || '—'), onclick: `pdb_goEntries('${entry.subcatId}')` },
+      { label: escHtml(entry.name || '—') }
+    ])}
+
+    <!-- بطاقة المزود -->
+    <div class="pdb-provider-hero">
+      <div class="pdb-provider-avatar-lg">
+        ${entry.name ? entry.name.charAt(0).toUpperCase() : 'م'}
+      </div>
+      <div class="pdb-provider-hero-info">
+        <h2 class="pdb-provider-name">${escHtml(entry.name || '—')}</h2>
+        ${entry.subzoneName ? `
+        <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.25);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;color:var(--primary);margin-top:6px">
+          📍 ${escHtml(entry.zoneName||'')} - ${escHtml(entry.subzoneName)}
+        </div>` : `
+        <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;color:#ef4444;margin-top:6px">
+          ⚠️ لم يُحدَّد موقع المزود
+        </div>`}
+        <div class="pdb-provider-meta-row">
+          ${entry.phone ? `<span class="pdb-meta-badge">📞 ${escHtml(entry.phone)}</span>` : ''}
+          ${entry.email ? `<span class="pdb-meta-badge">📧 ${escHtml(entry.email)}</span>` : ''}
+          ${entry.active === false ? `<span class="pdb-meta-badge pdb-badge-warn">⚠️ معطّل</span>` : `<span class="pdb-meta-badge pdb-badge-ok">✅ نشط</span>`}
+        </div>
+        ${entry.notes ? `<div class="pdb-provider-notes">${escHtml(entry.notes)}</div>` : ''}
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button class="pdb-btn pdb-btn-secondary" onclick="pdb_openEditEntryModal('${entry.id}')">✏️ تعديل البيانات</button>
+      </div>
+    </div>
+
+    <!-- عناوين المزود -->
+    <div class="pdb-addresses-section">
+      <div class="pdb-section-header">
+        <h3 class="pdb-section-title">📍 عناوين المزود ومواقعه</h3>
+        <button class="pdb-btn pdb-btn-primary pdb-btn-sm" onclick="pdb_openAddAddressModal('${entry.id}')">＋ إضافة عنوان</button>
+      </div>
+
+      ${addresses.length === 0 ? `
+      <div class="pdb-empty" style="padding:32px">
+        <div class="pdb-empty-icon" style="font-size:32px">📍</div>
+        <h4 style="margin:8px 0">لا توجد عناوين مسجّلة بعد</h4>
+        <p style="color:var(--text-muted);font-size:13px">أضف عنواناً أو أكثر لهذا المزود</p>
+        <button class="pdb-btn pdb-btn-primary" onclick="pdb_openAddAddressModal('${entry.id}')">＋ إضافة عنوان</button>
+      </div>` : `
+      <div class="pdb-addresses-list">
+        ${addresses.map((addr, idx) => `
+        <div class="pdb-address-card">
+          <div class="pdb-address-header">
+            <div class="pdb-address-label-row">
+              <span class="pdb-address-label">📍 ${escHtml(addr.label || `عنوان ${idx+1}`)}</span>
+              ${addr.lat && addr.lng ? `
+              <a class="pdb-map-link" href="https://www.google.com/maps?q=${addr.lat},${addr.lng}" target="_blank" rel="noopener">
+                🗺️ فتح في الخريطة
+              </a>` : ''}
+            </div>
+            <div class="pdb-address-actions">
+              <button class="pdb-icon-btn" onclick="pdb_openEditAddressModal('${entry.id}', ${idx})" title="تعديل العنوان">✏️</button>
+              <button class="pdb-icon-btn danger" onclick="pdb_confirmDeleteAddress('${entry.id}', ${idx})" title="حذف العنوان">🗑️</button>
+            </div>
+          </div>
+
+          ${addr.text ? `<div class="pdb-address-text">🏠 ${escHtml(addr.text)}</div>` : ''}
+
+          ${addr.lat && addr.lng ? `
+          <div class="pdb-coords-row">
+            <span class="pdb-coord-chip">Lat: ${addr.lat}</span>
+            <span class="pdb-coord-chip">Lng: ${addr.lng}</span>
+          </div>` : ''}
+
+          <!-- صور المحل -->
+          ${(addr.images && addr.images.length > 0) ? `
+          <div class="pdb-images-strip">
+            ${addr.images.map((img, iIdx) => `
+            <div class="pdb-img-wrap">
+              <img src="${escAttr(img)}" alt="صورة ${iIdx+1}" loading="lazy">
+              <button class="pdb-img-del" onclick="pdb_deleteAddressImage('${entry.id}', ${idx}, ${iIdx})" title="حذف الصورة">✕</button>
+            </div>`).join('')}
+            <button class="pdb-add-img-btn" onclick="pdb_openAddImageModal('${entry.id}', ${idx})">＋ صورة</button>
+          </div>` : `
+          <div style="margin-top:10px">
+            <button class="pdb-add-img-btn" onclick="pdb_openAddImageModal('${entry.id}', ${idx})">📷 إضافة صورة للمحل</button>
+          </div>`}
+        </div>`).join('')}
+      </div>`}
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  التنقل
+// ══════════════════════════════════════════════════════════════════════
+window.pdb_goHome = function() {
+  Object.assign(_pdbState(), { view:'cats', catId:null, subcatId:null, entryId:null, search:'' });
+  render();
+};
+window.pdb_goSubcats = function(catId) {
+  Object.assign(_pdbState(), { view:'subcats', catId, subcatId:null, entryId:null, search:'' });
+  render();
+};
+window.pdb_goEntries = function(subcatId) {
+  const subcat = (AppData.pdbSubcats||[]).find(s => s.id === subcatId);
+  Object.assign(_pdbState(), { view:'entries', subcatId, catId: subcat?.catId || _pdbState().catId, entryId:null, search:'' });
+  render();
+};
+window.pdb_goEntry = function(entryId) {
+  Object.assign(_pdbState(), { view:'entry', entryId, search:'' });
+  render();
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  CRUD — التصنيفات
+// ══════════════════════════════════════════════════════════════════════
+const _PDB_CAT_ICONS = ['🏢','🏨','🏥','🔧','🛠️','💼','🏪','🎓','🚗','✈️','🍽️','💊','🏋️','📦','🧹','💇','🌿','🔑','🧰','🎨','🏗️','⚡','🔌','🛁','🪟'];
+
+function _pdb_catModalHTML(cat = null) {
+  const selIcon = cat?.icon || '🏢';
+  return `
+  <div class="modal-header">
+    <h2 class="modal-title">${cat ? '✏️ تعديل التصنيف' : '🏢 تصنيف جديد'}</h2>
+    <button class="modal-close" onclick="closeModal()">✕</button>
+  </div>
+  <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+    <div class="form-group">
+      <label class="form-label">اسم التصنيف <span style="color:#ef4444">*</span></label>
+      <input class="form-control" id="pdb-cat-name" value="${escHtml(cat?.name||'')}" placeholder="مثال: مزودو المكلا، مزودو حضرموت..." autofocus>
+    </div>
+    <div class="form-group">
+      <label class="form-label">الوصف (اختياري)</label>
+      <input class="form-control" id="pdb-cat-desc" value="${escHtml(cat?.desc||'')}" placeholder="وصف مختصر للتصنيف">
+    </div>
+    <div class="form-group">
+      <label class="form-label">الأيقونة</label>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:6px" id="pdb-cat-icon-grid">
+        ${_PDB_CAT_ICONS.map(ic => `
+        <div onclick="pdb_selectCatIcon(this,'${ic}')"
+             style="padding:10px;font-size:20px;border:2px solid ${ic===selIcon?'var(--primary)':'var(--border)'};border-radius:10px;cursor:pointer;text-align:center;transition:all 0.15s;background:${ic===selIcon?'rgba(139,92,246,0.1)':'rgba(255,255,255,0.02)'}">
+          ${ic}
+        </div>`).join('')}
+      </div>
+      <input type="hidden" id="pdb-cat-icon" value="${escHtml(selIcon)}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">ترتيب العرض</label>
+      <input class="form-control" type="number" min="1" id="pdb-cat-order" value="${cat?.order||''}" placeholder="1, 2, 3...">
+    </div>
+    ${cat ? `
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+      <input type="checkbox" id="pdb-cat-active" ${cat.active!==false?'checked':''} style="width:16px;height:16px;accent-color:var(--primary)">
+      <span>تصنيف مفعّل</span>
+    </label>` : ''}
+    <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:4px">
+      <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+      <button class="btn btn-primary" onclick="pdb_submitCat(${cat?`'${cat.id}'`:'null'})">✅ حفظ</button>
+    </div>
+  </div>`;
+}
+
+window.pdb_selectCatIcon = function(el, icon) {
+  document.querySelectorAll('#pdb-cat-icon-grid > div').forEach(d => {
+    d.style.borderColor = 'var(--border)';
+    d.style.background  = 'rgba(255,255,255,0.02)';
+  });
+  el.style.borderColor = 'var(--primary)';
+  el.style.background  = 'rgba(139,92,246,0.1)';
+  document.getElementById('pdb-cat-icon').value = icon;
+};
+
+window.pdb_openAddCatModal  = function() { openModal(_pdb_catModalHTML()); };
+window.pdb_openEditCatModal = function(id) {
+  const c = (AppData.pdbCats||[]).find(c => c.id === id);
+  if (c) openModal(_pdb_catModalHTML(c));
+};
+
+window.pdb_submitCat = async function(id = null) {
+  const name   = document.getElementById('pdb-cat-name')?.value?.trim();
+  const desc   = document.getElementById('pdb-cat-desc')?.value?.trim();
+  const icon   = document.getElementById('pdb-cat-icon')?.value || '🏢';
+  const order  = parseInt(document.getElementById('pdb-cat-order')?.value) || (AppData.pdbCats||[]).length + 1;
+  const active = id ? (document.getElementById('pdb-cat-active')?.checked !== false) : true;
+  if (!name) { toast('اسم التصنيف مطلوب', 'error'); return; }
+  showLoader('جاري الحفظ...');
+  try {
+    const payload = { name, desc:desc||'', icon, order, active, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+    if (id) {
+      await db.collection(PDB_CATS_COL).doc(id).update(payload);
+    } else {
+      payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection(PDB_CATS_COL).add(payload);
+    }
+    await pdb_reload();
+    hideLoader(); closeModal();
+    toast(`✅ تم ${id ? 'تحديث' : 'إضافة'} التصنيف`, 'success');
+    render();
+  } catch (e) { hideLoader(); toast('خطأ: ' + (e.message || e), 'error'); }
+};
+
+window.pdb_confirmDeleteCat = function(id, name) {
+  const subs = (AppData.pdbSubcats||[]).filter(s => s.catId === id).length;
+  const msg  = subs > 0 ? `حذف تصنيف "${name}"؟\nسيُحذف معه ${subs} فئة فرعية وجميع مزوديها. هذا لا يمكن التراجع عنه.`
+                        : `حذف تصنيف "${name}"؟ لا يمكن التراجع.`;
+  if (!confirm(msg)) return;
+  showLoader('جاري الحذف...');
+  (async () => {
+    try {
+      const subIds = (AppData.pdbSubcats||[]).filter(s => s.catId === id).map(s => s.id);
+      await Promise.all(subIds.map(sid => db.collection(PDB_SUBCATS_COL).doc(sid).delete()));
+      const entryIds = (AppData.pdbEntries||[]).filter(e => e.catId === id).map(e => e.id);
+      await Promise.all(entryIds.map(eid => db.collection(PDB_ENTRIES_COL).doc(eid).delete()));
+      await db.collection(PDB_CATS_COL).doc(id).delete();
+      await pdb_reload();
+      hideLoader(); toast('✅ تم حذف التصنيف وكل محتوياته', 'success');
+      pdb_goHome();
+    } catch (e) { hideLoader(); toast('خطأ: ' + (e.message || e), 'error'); }
+  })();
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  CRUD — الفئات الفرعية
+// ══════════════════════════════════════════════════════════════════════
+function _pdb_subcatModalHTML(catId, sub = null) {
+  const selIcon = sub?.icon || '📂';
+  const icons   = ['📂','🏪','🔧','🏨','🏥','💊','🎓','🚗','🍽️','💼','🌿','🔑','🏋️','📦','🧹','💇','🛁','⚡','🔌','🪟','🏗️','🎨','🧰','🛠️','🏢'];
+  return `
+  <div class="modal-header">
+    <h2 class="modal-title">${sub ? '✏️ تعديل الفئة الفرعية' : '📂 فئة فرعية جديدة'}</h2>
+    <button class="modal-close" onclick="closeModal()">✕</button>
+  </div>
+  <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+    <div class="form-group">
+      <label class="form-label">اسم الفئة الفرعية <span style="color:#ef4444">*</span></label>
+      <input class="form-control" id="pdb-sub-name" value="${escHtml(sub?.name||'')}" placeholder="مثال: مزودو الحجوزات، مزودو الصيدليات..." autofocus>
+    </div>
+    <div class="form-group">
+      <label class="form-label">الوصف (اختياري)</label>
+      <input class="form-control" id="pdb-sub-desc" value="${escHtml(sub?.desc||'')}" placeholder="وصف مختصر">
+    </div>
+    <div class="form-group">
+      <label class="form-label">الأيقونة</label>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:6px" id="pdb-sub-icon-grid">
+        ${icons.map(ic => `
+        <div onclick="pdb_selectSubIcon(this,'${ic}')"
+             style="padding:10px;font-size:20px;border:2px solid ${ic===selIcon?'var(--primary)':'var(--border)'};border-radius:10px;cursor:pointer;text-align:center;transition:all 0.15s;background:${ic===selIcon?'rgba(139,92,246,0.1)':'rgba(255,255,255,0.02)'}">
+          ${ic}
+        </div>`).join('')}
+      </div>
+      <input type="hidden" id="pdb-sub-icon" value="${escHtml(selIcon)}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">ترتيب العرض</label>
+      <input class="form-control" type="number" min="1" id="pdb-sub-order" value="${sub?.order||''}" placeholder="1, 2, 3...">
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:4px">
+      <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+      <button class="btn btn-primary" onclick="pdb_submitSubcat('${catId}',${sub?`'${sub.id}'`:'null'})">✅ حفظ</button>
+    </div>
+  </div>`;
+}
+
+window.pdb_selectSubIcon = function(el, icon) {
+  document.querySelectorAll('#pdb-sub-icon-grid > div').forEach(d => {
+    d.style.borderColor = 'var(--border)';
+    d.style.background  = 'rgba(255,255,255,0.02)';
+  });
+  el.style.borderColor = 'var(--primary)';
+  el.style.background  = 'rgba(139,92,246,0.1)';
+  document.getElementById('pdb-sub-icon').value = icon;
+};
+
+window.pdb_openAddSubcatModal  = function(catId) { openModal(_pdb_subcatModalHTML(catId)); };
+window.pdb_openEditSubcatModal = function(id) {
+  const s = (AppData.pdbSubcats||[]).find(s => s.id === id);
+  if (s) openModal(_pdb_subcatModalHTML(s.catId, s));
+};
+
+window.pdb_submitSubcat = async function(catId, id = null) {
+  const name  = document.getElementById('pdb-sub-name')?.value?.trim();
+  const desc  = document.getElementById('pdb-sub-desc')?.value?.trim();
+  const icon  = document.getElementById('pdb-sub-icon')?.value || '📂';
+  const order = parseInt(document.getElementById('pdb-sub-order')?.value) || (AppData.pdbSubcats||[]).filter(s=>s.catId===catId).length + 1;
+  if (!name) { toast('اسم الفئة الفرعية مطلوب', 'error'); return; }
+  showLoader('جاري الحفظ...');
+  try {
+    const payload = { name, desc:desc||'', icon, order, catId, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+    if (id) {
+      await db.collection(PDB_SUBCATS_COL).doc(id).update(payload);
+    } else {
+      payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection(PDB_SUBCATS_COL).add(payload);
+    }
+    await pdb_reload();
+    hideLoader(); closeModal();
+    toast(`✅ تم ${id ? 'تحديث' : 'إضافة'} الفئة الفرعية`, 'success');
+    render();
+  } catch (e) { hideLoader(); toast('خطأ: ' + (e.message || e), 'error'); }
+};
+
+window.pdb_confirmDeleteSubcat = function(id, name) {
+  const entries = (AppData.pdbEntries||[]).filter(e => e.subcatId === id).length;
+  const msg = entries > 0
+    ? `حذف فئة "${name}"؟\nسيُحذف معها ${entries} مزود. هذا لا يمكن التراجع عنه.`
+    : `حذف فئة "${name}"؟ لا يمكن التراجع.`;
+  if (!confirm(msg)) return;
+  showLoader('جاري الحذف...');
+  (async () => {
+    try {
+      const eIds = (AppData.pdbEntries||[]).filter(e => e.subcatId === id).map(e => e.id);
+      await Promise.all(eIds.map(eid => db.collection(PDB_ENTRIES_COL).doc(eid).delete()));
+      await db.collection(PDB_SUBCATS_COL).doc(id).delete();
+      await pdb_reload();
+      hideLoader(); toast('✅ تم الحذف', 'success');
+      render();
+    } catch (e) { hideLoader(); toast('خطأ: ' + (e.message || e), 'error'); }
+  })();
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  CRUD — المزودون (الإدخالات)
+// ══════════════════════════════════════════════════════════════════════
+function _pdb_entryModalHTML(catId, subcatId, entry = null) {
+  const users = (AppData.users||[]).filter(u => ['vendor','provider','tech'].includes(u.role));
+  return `
+  <div class="modal-header">
+    <h2 class="modal-title">${entry ? '✏️ تعديل بيانات المزود' : '👤 مزود خدمة جديد'}</h2>
+    <button class="modal-close" onclick="closeModal()">✕</button>
+  </div>
+  <div style="padding:20px;display:flex;flex-direction:column;gap:14px;max-height:70vh;overflow-y:auto">
+    <div class="form-group">
+      <label class="form-label">اسم المزود <span style="color:#ef4444">*</span></label>
+      <input class="form-control" id="pdb-entry-name" value="${escHtml(entry?.name||'')}" placeholder="الاسم الكامل أو اسم المتجر" autofocus>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label class="form-label">رقم الهاتف</label>
+        <input class="form-control" id="pdb-entry-phone" value="${escHtml(entry?.phone||'')}" placeholder="+967...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">البريد الإلكتروني</label>
+        <input class="form-control" id="pdb-entry-email" value="${escHtml(entry?.email||'')}" placeholder="example@mail.com">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">ملاحظات (اختياري)</label>
+      <textarea class="form-control" id="pdb-entry-notes" rows="3" placeholder="أي ملاحظات إضافية...">${escHtml(entry?.notes||'')}</textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">ربط بحساب مستخدم على المنصة (اختياري)</label>
+      <select class="form-control" id="pdb-entry-uid">
+        <option value="">— لا يوجد حساب مرتبط —</option>
+        ${users.map(u => `<option value="${u.id}" ${entry?.linkedUserId===u.id?'selected':''}>${escHtml(u.name||u.email||u.id)} (${u.role})</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">🏛️ المحافظة <span style="color:#ef4444">*</span></label>
+      <select class="form-control" id="pdb-entry-gov" onchange="pdb_onGovChange()">
+        <option value="">— اختر المحافظة —</option>
+        ${(AppData.deliveryGovernorates || []).filter(g => g.active !== false).map(g =>
+          `<option value="${g.id}" data-name="${escAttr(g.name)}" ${entry?.govId === g.id ? 'selected' : ''}>${escHtml(g.name)}</option>`
+        ).join('')}
+      </select>
+    </div>
+    <div class="form-group" id="pdb-entry-zone-wrap" style="display:${entry?.zoneId ? 'block' : 'none'}">
+      <label class="form-label">🗺️ المنطقة الرئيسية للمزود <span style="color:#ef4444">*</span> <span style="font-size:11px;color:var(--text-muted)">(مطلوب لحساب التوصيل)</span></label>
+      <select class="form-control" id="pdb-entry-zone" onchange="pdb_onZoneChange()">
+        <option value="">— اختر المنطقة —</option>
+        ${entry?.govId ? (AppData.deliveryZones || []).filter(z => z.govId === entry.govId && z.active !== false).map(z =>
+          `<option value="${z.id}" data-name="${escAttr(z.name)}" ${entry?.zoneId === z.id ? 'selected' : ''}>${escHtml(z.name)}</option>`
+        ).join('') : ''}
+      </select>
+    </div>
+    <div class="form-group" id="pdb-entry-subzone-wrap" style="display:${entry?.subzoneId ? 'block' : 'none'}">
+      <label class="form-label">📍 الحي التفصيلي <span style="color:#ef4444">*</span></label>
+      <select class="form-control" id="pdb-entry-subzone">
+        <option value="">— اختر الحي —</option>
+        ${entry?.zoneId ? (AppData.deliverySubzones || []).filter(sz => sz.zoneId === entry.zoneId && sz.active !== false).map(sz =>
+          `<option value="${sz.id}" data-name="${escAttr(sz.name)}" ${entry?.subzoneId === sz.id ? 'selected' : ''}>${escHtml(sz.name)}</option>`
+        ).join('') : ''}
+      </select>
+    </div>
+    ${entry ? `
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+      <input type="checkbox" id="pdb-entry-active" ${entry.active!==false?'checked':''} style="width:16px;height:16px;accent-color:var(--primary)">
+      <span>مزود نشط</span>
+    </label>` : ''}
+    ${typeof ph48_adminSectionHtml === 'function' ? ph48_adminSectionHtml(entry || {}) : ''}
+    <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:4px">
+      <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+      <button class="btn btn-primary" onclick="pdb_submitEntry('${catId}','${subcatId}',${entry?`'${entry.id}'`:'null'})">✅ حفظ</button>
+    </div>
+  </div>`;
+}
+
+window.pdb_openAddEntryModal = function(catId, subcatId) { openModal(_pdb_entryModalHTML(catId, subcatId)); };
+window.pdb_openEditEntryModal = function(id) {
+  const e = (AppData.pdbEntries||[]).find(e => e.id === id);
+  if (e) openModal(_pdb_entryModalHTML(e.catId, e.subcatId, e));
+};
+
+window.pdb_submitEntry = async function(catId, subcatId, id = null) {
+  const name   = document.getElementById('pdb-entry-name')?.value?.trim();
+  const phone  = document.getElementById('pdb-entry-phone')?.value?.trim();
+  const email  = document.getElementById('pdb-entry-email')?.value?.trim();
+  const notes  = document.getElementById('pdb-entry-notes')?.value?.trim();
+  const uid    = document.getElementById('pdb-entry-uid')?.value;
+  const active = id ? (document.getElementById('pdb-entry-active')?.checked !== false) : true;
+  const govEl     = document.getElementById('pdb-entry-gov');
+  const zoneEl    = document.getElementById('pdb-entry-zone');
+  const subzoneEl = document.getElementById('pdb-entry-subzone');
+  const govId     = govEl?.value || null;
+  const zoneId    = zoneEl?.value || null;
+  const subzoneId = subzoneEl?.value || null;
+  if (!subzoneId) { toast('يرجى تحديد الحي الخاص بالمزود (مطلوب لحساب التوصيل)', 'error'); return; }
+  const selectedGovOpt     = govEl?.options[govEl?.selectedIndex];
+  const selectedZoneOpt    = zoneEl?.options[zoneEl?.selectedIndex];
+  const selectedSubzoneOpt = subzoneEl?.options[subzoneEl?.selectedIndex];
+  const govName     = selectedGovOpt?.dataset?.name     || '';
+  const zoneName    = selectedZoneOpt?.dataset?.name    || '';
+  const subzoneName = selectedSubzoneOpt?.dataset?.name || '';
+  if (!name) { toast('اسم المزود مطلوب', 'error'); return; }
+  showLoader('جاري الحفظ...');
+  try {
+    // ── بيانات التنبيهات وحالة التوفر (ph48) ─────────────────────────
+    let stockStatus = 'available', alertBadge = null;
+    if (typeof ph48_collectAlertData === 'function') {
+      const alertData = ph48_collectAlertData();
+      stockStatus = alertData.stockStatus || 'available';
+      alertBadge  = alertData.alertBadge  || null;
+    }
+    const payload = { name, phone:phone||'', email:email||'', notes:notes||'', catId, subcatId,
+      linkedUserId: uid||null, active, govId, govName, zoneId, zoneName, subzoneId, subzoneName,
+      stockStatus, alertBadge,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+    let newId = id;
+    if (id) {
+      await db.collection(PDB_ENTRIES_COL).doc(id).update(payload);
+    } else {
+      payload.addresses = [];
+      payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      const ref = await db.collection(PDB_ENTRIES_COL).add(payload);
+      newId = ref.id;
+    }
+    await pdb_reload();
+    hideLoader(); closeModal();
+    toast(`✅ تم ${id ? 'تحديث' : 'إضافة'} المزود`, 'success');
+    pdb_goEntry(newId);
+  } catch (e) { hideLoader(); toast('خطأ: ' + (e.message || e), 'error'); }
+};
+
+window.pdb_confirmDeleteEntry = function(id, name) {
+  if (!confirm(`حذف المزود "${name}"؟ سيُحذف مع جميع عناوينه وصوره. لا يمكن التراجع.`)) return;
+  showLoader('جاري الحذف...');
+  db.collection(PDB_ENTRIES_COL).doc(id).delete()
+    .then(() => pdb_reload())
+    .then(() => { hideLoader(); toast('✅ تم حذف المزود', 'success');
+      Object.assign(_pdbState(), { view:'entries', entryId:null });
+      render();
+    })
+    .catch(e => { hideLoader(); toast('خطأ: ' + (e.message||e), 'error'); });
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  CRUD — العناوين
+// ══════════════════════════════════════════════════════════════════════
+let _pdbPickerMap = null, _pdbPickerMarker = null, _pdbPickerEntryId = null, _pdbPickerAddrIdx = null;
+
+function _pdb_addressModalHTML(entryId, addrIdx = null) {
+  const entry = (AppData.pdbEntries||[]).find(e => e.id === entryId);
+  const addr  = addrIdx !== null ? (entry?.addresses||[])[addrIdx] : null;
+  return `
+  <div class="modal-header">
+    <h2 class="modal-title">${addr ? '✏️ تعديل العنوان' : '📍 عنوان جديد'}</h2>
+    <button class="modal-close" onclick="closeModal()">✕</button>
+  </div>
+  <div style="padding:20px;display:flex;flex-direction:column;gap:14px;max-height:80vh;overflow-y:auto">
+    <div class="form-group">
+      <label class="form-label">اسم/تسمية العنوان</label>
+      <input class="form-control" id="pdb-addr-label" value="${escHtml(addr?.label||'')}" placeholder="مثال: الفرع الرئيسي، فرع المدينة..." autofocus>
+    </div>
+    <div class="form-group">
+      <label class="form-label">العنوان التفصيلي كتابياً</label>
+      <textarea class="form-control" id="pdb-addr-text" rows="2" placeholder="الشارع، الحي، المدينة...">${escHtml(addr?.text||'')}</textarea>
+    </div>
+
+    <!-- خريطة الموقع -->
+    <div class="form-group">
+      <label class="form-label">📍 الموقع على الخريطة</label>
+      <div id="pdb-map-canvas" style="height:280px;border-radius:12px;border:1px solid var(--border);overflow:hidden;margin-bottom:10px;background:var(--bg-card)"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label class="form-label" style="font-size:11px">خط العرض (Lat)</label>
+          <input class="form-control" type="number" step="0.000001" id="pdb-addr-lat" value="${addr?.lat||''}" placeholder="مثال: 14.5439">
+        </div>
+        <div>
+          <label class="form-label" style="font-size:11px">خط الطول (Lng)</label>
+          <input class="form-control" type="number" step="0.000001" id="pdb-addr-lng" value="${addr?.lng||''}" placeholder="مثال: 49.1202">
+        </div>
+      </div>
+      <button type="button" class="pdb-btn pdb-btn-secondary" style="margin-top:8px;width:100%" onclick="pdb_initMap('${entryId}',${addrIdx??'null'})">
+        🗺️ اختر الموقع من الخريطة
+      </button>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:4px">
+      <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+      <button class="btn btn-primary" onclick="pdb_submitAddress('${entryId}',${addrIdx??'null'})">✅ حفظ العنوان</button>
+    </div>
+  </div>`;
+}
+
+// ─── منتقي المحافظة / المنطقة / الحي للمزود ───────────────────────
+window.pdb_onGovChange = function() {
+  const govEl      = document.getElementById('pdb-entry-gov');
+  const zoneWrap   = document.getElementById('pdb-entry-zone-wrap');
+  const zoneSelect = document.getElementById('pdb-entry-zone');
+  const szWrap     = document.getElementById('pdb-entry-subzone-wrap');
+  const szSelect   = document.getElementById('pdb-entry-subzone');
+  const govId      = govEl?.value;
+
+  if (!govId) {
+    if (zoneWrap) zoneWrap.style.display = 'none';
+    if (zoneSelect) zoneSelect.innerHTML = '<option value="">— اختر المنطقة —</option>';
+    if (szWrap) szWrap.style.display = 'none';
+    if (szSelect) szSelect.innerHTML = '<option value="">— اختر الحي —</option>';
+    return;
+  }
+
+  const zones = (AppData.deliveryZones || []).filter(z => z.govId === govId && z.active !== false);
+  if (zoneSelect) {
+    zoneSelect.innerHTML = '<option value="">— اختر المنطقة —</option>' +
+      zones.map(z => `<option value="${z.id}" data-name="${escAttr(z.name)}">${escHtml(z.name)}</option>`).join('');
+  }
+  if (zoneWrap) zoneWrap.style.display = zones.length ? 'block' : 'none';
+  if (szWrap) szWrap.style.display = 'none';
+  if (szSelect) szSelect.innerHTML = '<option value="">— اختر الحي —</option>';
+};
+
+window.pdb_onZoneChange = function() {
+  const zoneEl   = document.getElementById('pdb-entry-zone');
+  const szWrap   = document.getElementById('pdb-entry-subzone-wrap');
+  const szSelect = document.getElementById('pdb-entry-subzone');
+  const zoneId   = zoneEl?.value;
+
+  if (!zoneId) {
+    if (szWrap) szWrap.style.display = 'none';
+    if (szSelect) szSelect.innerHTML = '<option value="">— اختر الحي —</option>';
+    return;
+  }
+
+  const subzones = (AppData.deliverySubzones || []).filter(sz => sz.zoneId === zoneId && sz.active !== false);
+  if (szSelect) {
+    szSelect.innerHTML = '<option value="">— اختر الحي —</option>' +
+      subzones.map(sz => `<option value="${sz.id}" data-name="${escAttr(sz.name)}">${escHtml(sz.name)}</option>`).join('');
+  }
+  if (szWrap) szWrap.style.display = subzones.length ? 'block' : 'none';
+};
+
+window.pdb_openAddAddressModal  = function(entryId)           { openModal(_pdb_addressModalHTML(entryId),        'large'); };
+window.pdb_openEditAddressModal = function(entryId, addrIdx)  { openModal(_pdb_addressModalHTML(entryId, addrIdx),'large'); };
+
+window.pdb_initMap = function(entryId, addrIdx) {
+  if (typeof mapboxgl === 'undefined') { toast('مكتبة الخرائط غير متوفرة', 'warning'); return; }
+  const latEl = document.getElementById('pdb-addr-lat');
+  const lngEl = document.getElementById('pdb-addr-lng');
+  const lat = parseFloat(latEl?.value) || 14.5439;
+  const lng = parseFloat(lngEl?.value) || 49.1202;
+
+  if (_pdbPickerMap) { _pdbPickerMap.remove(); _pdbPickerMap = null; }
+  mapboxgl.accessToken = window.MAPBOX_TOKEN;
+  _pdbPickerMap = new mapboxgl.Map({
+    container: 'pdb-map-canvas',
+    style: 'mapbox://styles/mapbox/streets-v12',
+    center: [lng, lat],
+    zoom: 13
+  });
+  _pdbPickerMap.addControl(new mapboxgl.NavigationControl(), 'top-left');
+
+  const el = document.createElement('div');
+  el.style.cssText = 'width:32px;height:32px;background:url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/svgs/solid/location-dot.svg") center/contain no-repeat;filter:drop-shadow(0 2px 4px rgba(139,92,246,0.6));cursor:grab;';
+  _pdbPickerMarker = new mapboxgl.Marker({ element: el, draggable: true })
+    .setLngLat([lng, lat])
+    .addTo(_pdbPickerMap);
+
+  _pdbPickerMarker.on('dragend', () => {
+    const pos = _pdbPickerMarker.getLngLat();
+    if (latEl) latEl.value = pos.lat.toFixed(6);
+    if (lngEl) lngEl.value = pos.lng.toFixed(6);
+  });
+  _pdbPickerMap.on('click', (ev) => {
+    _pdbPickerMarker.setLngLat(ev.lngLat);
+    if (latEl) latEl.value = ev.lngLat.lat.toFixed(6);
+    if (lngEl) lngEl.value = ev.lngLat.lng.toFixed(6);
+  });
+};
+
+window.pdb_submitAddress = async function(entryId, addrIdx) {
+  const label = document.getElementById('pdb-addr-label')?.value?.trim();
+  const text  = document.getElementById('pdb-addr-text')?.value?.trim();
+  const lat   = parseFloat(document.getElementById('pdb-addr-lat')?.value) || null;
+  const lng   = parseFloat(document.getElementById('pdb-addr-lng')?.value) || null;
+
+  showLoader('جاري حفظ العنوان...');
+  try {
+    const entry = (AppData.pdbEntries||[]).find(e => e.id === entryId);
+    if (!entry) throw new Error('المزود غير موجود');
+    const addresses = [...(entry.addresses||[])];
+    const addrObj = { label:label||'', text:text||'', lat, lng, images: addrIdx !== null ? (addresses[addrIdx]?.images||[]) : [] };
+    if (addrIdx !== null) {
+      addresses[addrIdx] = addrObj;
+    } else {
+      addresses.push(addrObj);
+    }
+    await db.collection(PDB_ENTRIES_COL).doc(entryId).update({ addresses, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    await pdb_reload();
+    hideLoader(); closeModal();
+    toast('✅ تم حفظ العنوان', 'success');
+    render();
+  } catch (e) { hideLoader(); toast('خطأ: ' + (e.message||e), 'error'); }
+};
+
+window.pdb_confirmDeleteAddress = function(entryId, addrIdx) {
+  if (!confirm('حذف هذا العنوان وصوره؟ لا يمكن التراجع.')) return;
+  showLoader('جاري الحذف...');
+  (async () => {
+    try {
+      const entry = (AppData.pdbEntries||[]).find(e => e.id === entryId);
+      const addresses = (entry?.addresses||[]).filter((_, i) => i !== addrIdx);
+      await db.collection(PDB_ENTRIES_COL).doc(entryId).update({ addresses, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      await pdb_reload();
+      hideLoader(); toast('✅ تم حذف العنوان', 'success');
+      render();
+    } catch (e) { hideLoader(); toast('خطأ: ' + (e.message||e), 'error'); }
+  })();
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  CRUD — صور المحل
+// ══════════════════════════════════════════════════════════════════════
+window.pdb_openAddImageModal = function(entryId, addrIdx) {
+  openModal(`
+  <div class="modal-header">
+    <h2 class="modal-title">📷 إضافة صورة للمحل</h2>
+    <button class="modal-close" onclick="closeModal()">✕</button>
+  </div>
+  <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+    <div class="form-group">
+      <label class="form-label">رابط الصورة (URL)</label>
+      <input class="form-control" id="pdb-img-url" placeholder="https://..." autofocus>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">أدخل رابط صورة مباشر (HTTPS)</div>
+    </div>
+    <div id="pdb-img-preview" style="display:none;text-align:center">
+      <img id="pdb-img-preview-el" style="max-width:100%;max-height:180px;border-radius:10px;border:1px solid var(--border)">
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="closeModal()">إلغاء</button>
+      <button class="btn btn-primary" onclick="pdb_submitImage('${entryId}',${addrIdx})">✅ إضافة الصورة</button>
+    </div>
+  </div>`);
+
+  setTimeout(() => {
+    const inp = document.getElementById('pdb-img-url');
+    if (inp) inp.addEventListener('input', function() {
+      const url = this.value.trim();
+      const prev = document.getElementById('pdb-img-preview');
+      const img  = document.getElementById('pdb-img-preview-el');
+      if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+        img.src = url; prev.style.display = '';
+      } else { prev.style.display = 'none'; }
+    });
+  }, 100);
+};
+
+window.pdb_submitImage = async function(entryId, addrIdx) {
+  const url = document.getElementById('pdb-img-url')?.value?.trim();
+  if (!url) { toast('أدخل رابط الصورة', 'warning'); return; }
+  showLoader('جاري الإضافة...');
+  try {
+    const entry = (AppData.pdbEntries||[]).find(e => e.id === entryId);
+    if (!entry) throw new Error('المزود غير موجود');
+    const addresses = [...(entry.addresses||[])];
+    if (!addresses[addrIdx]) throw new Error('العنوان غير موجود');
+    addresses[addrIdx] = { ...addresses[addrIdx], images: [...(addresses[addrIdx].images||[]), url] };
+    await db.collection(PDB_ENTRIES_COL).doc(entryId).update({ addresses, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    await pdb_reload();
+    hideLoader(); closeModal();
+    toast('✅ تمت إضافة الصورة', 'success');
+    render();
+  } catch (e) { hideLoader(); toast('خطأ: ' + (e.message||e), 'error'); }
+};
+
+window.pdb_deleteAddressImage = function(entryId, addrIdx, imgIdx) {
+  if (!confirm('حذف هذه الصورة؟')) return;
+  showLoader();
+  (async () => {
+    try {
+      const entry = (AppData.pdbEntries||[]).find(e => e.id === entryId);
+      const addresses = [...(entry?.addresses||[])];
+      addresses[addrIdx] = { ...addresses[addrIdx], images: (addresses[addrIdx].images||[]).filter((_,i)=>i!==imgIdx) };
+      await db.collection(PDB_ENTRIES_COL).doc(entryId).update({ addresses, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      await pdb_reload();
+      hideLoader(); toast('✅ تم حذف الصورة', 'success');
+      render();
+    } catch (e) { hideLoader(); toast('خطأ: ' + (e.message||e), 'error'); }
+  })();
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  API عامة — للاستخدام في نظام ربط المنتجات
+// ══════════════════════════════════════════════════════════════════════
+
+/**
+ * يعيد قائمة مزودين اختيار منسّقة للاستخدام في نافذة ربط المنتجات.
+ * @returns {Array} [{ id, name, phone, catName, subcatName, addresses }]
+ */
+window.pdb_getAllProvidersList = function() {
+  const cats    = AppData.pdbCats    || [];
+  const subcats = AppData.pdbSubcats || [];
+  const entries = AppData.pdbEntries || [];
+  return entries.filter(e => e.active !== false).map(e => {
+    const cat    = cats.find(c => c.id === e.catId);
+    const subcat = subcats.find(s => s.id === e.subcatId);
+    return {
+      id:          e.id,
+      name:        e.name || '—',
+      phone:       e.phone || '',
+      catName:     cat?.name || '',
+      subcatName:  subcat?.name || '',
+      linkedUserId:e.linkedUserId || null,
+      addresses:   e.addresses || [],
+    };
+  });
+};
+
+/**
+ * يعيد بيانات مزود واحد بالكامل.
+ */
+window.pdb_getProvider = function(id) {
+  return (AppData.pdbEntries||[]).find(e => e.id === id) || null;
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  مساعدات
+// ══════════════════════════════════════════════════════════════════════
+function _pdb_breadcrumb(items) {
+  return `
+  <nav class="pdb-breadcrumb">
+    ${items.map((item, idx) => `
+    ${idx > 0 ? '<span class="pdb-bc-sep">›</span>' : ''}
+    ${item.onclick
+      ? `<button class="pdb-bc-btn" onclick="${item.onclick}">${item.label}</button>`
+      : `<span class="pdb-bc-current">${item.label}</span>`}
+    `).join('')}
+  </nav>`;
+}
+
+function _pdb_styles() {
+  const existing = document.getElementById('pdb-styles');
+  if (existing) existing.remove();
+  return `
+  <style id="pdb-styles">
+    * { box-sizing: border-box; }
+    .pdb-wrap { padding:24px; max-width:1200px; margin:0 auto; font-family:'Cairo',sans-serif; direction:rtl; }
+
+    /* ── ترويسة الصفحة ── */
+    .pdb-page-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:24px; }
+    .pdb-page-title  { font-size:22px; font-weight:900; margin:0; color:#f1f5f9; }
+    .pdb-page-sub    { color:#94a3b8; font-size:13px; margin:4px 0 0; }
+
+    /* ── بطاقات التصنيفات ── */
+    .pdb-cats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .pdb-cat-card {
+      background: rgba(255,255,255,0.04);
+      border: 1.5px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .pdb-cat-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(139,92,246,0.5);
+      box-shadow: 0 12px 40px rgba(139,92,246,0.18);
+    }
+    .pdb-cat-top-bar {
+      height: 4px;
+      background: linear-gradient(90deg, #8b5cf6, #6366f1);
+      flex-shrink: 0;
+    }
+    .pdb-cat-body {
+      padding: 20px 18px 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      flex: 1;
+      gap: 8px;
+    }
+    .pdb-cat-icon-wrap {
+      width: 64px;
+      height: 64px;
+      border-radius: 18px;
+      background: rgba(139,92,246,0.12);
+      border: 1.5px solid rgba(139,92,246,0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      margin-bottom: 4px;
+    }
+    .pdb-cat-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: #f1f5f9;
+      line-height: 1.3;
+    }
+    .pdb-cat-desc {
+      font-size: 12px;
+      color: #64748b;
+      min-height: 16px;
+      line-height: 1.4;
+    }
+    .pdb-cat-stats {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 12px;
+      padding: 8px 16px;
+      margin-top: 6px;
+      width: 100%;
+      justify-content: center;
+    }
+    .pdb-cat-stat { text-align:center; padding: 0 12px; }
+    .pdb-cat-stat-val { font-size:18px; font-weight:900; color:#c4b5fd; line-height:1; }
+    .pdb-cat-stat-lbl { font-size:10px; color:#64748b; margin-top:2px; }
+    .pdb-cat-stat-divider { width:1px; height:28px; background:rgba(255,255,255,0.08); flex-shrink:0; }
+    .pdb-cat-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      background: rgba(0,0,0,0.1);
+    }
+    .pdb-cat-actions { display:flex; gap:4px; }
+    .pdb-cat-arrow { color:#475569; font-size:20px; font-weight:900; }
+    .pdb-cat-card:hover .pdb-cat-arrow { color:#8b5cf6; }
+
+    /* ── breadcrumb ── */
+    .pdb-breadcrumb { display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin-bottom:20px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:12px; padding:10px 16px; }
+    .pdb-bc-btn     { background:none; border:none; cursor:pointer; color:#8b5cf6; font-size:13px; font-weight:700; font-family:'Cairo',sans-serif; padding:2px 6px; border-radius:6px; transition:background 0.15s; }
+    .pdb-bc-btn:hover { background:rgba(139,92,246,0.1); }
+    .pdb-bc-sep     { color:#475569; font-size:16px; }
+    .pdb-bc-current { font-size:13px; color:#94a3b8; padding:2px 6px; font-family:'Cairo',sans-serif; }
+
+    /* ── بحث ── */
+    .pdb-search-row  { margin-bottom:18px; }
+    .pdb-search-wrap { position:relative; }
+    .pdb-search-icon { position:absolute; right:14px; top:50%; transform:translateY(-50%); font-size:15px; color:#64748b; pointer-events:none; z-index:1; }
+    .pdb-search-input {
+      width: 100%;
+      padding: 11px 44px 11px 16px;
+      border: 1.5px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.05);
+      color: #f1f5f9;
+      font-family: 'Cairo', sans-serif;
+      font-size: 14px;
+      transition: border-color 0.2s;
+      box-sizing: border-box;
+      outline: none;
+    }
+    .pdb-search-input:focus { border-color:#8b5cf6; background:rgba(139,92,246,0.06); }
+    .pdb-search-input::placeholder { color:#475569; }
+
+    /* ── قائمة الفئات الفرعية ── */
+    .pdb-subcats-list { display:flex; flex-direction:column; gap:10px; }
+    .pdb-subcat-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 18px;
+      background: rgba(255,255,255,0.04);
+      border: 1.5px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .pdb-subcat-row:hover { border-color:rgba(139,92,246,0.4); background:rgba(139,92,246,0.05); transform:translateX(-2px); }
+    .pdb-subcat-icon { font-size:28px; flex-shrink:0; width:44px; height:44px; display:flex; align-items:center; justify-content:center; background:rgba(139,92,246,0.1); border-radius:12px; }
+    .pdb-subcat-body { flex:1; min-width:0; }
+    .pdb-subcat-name { font-size:15px; font-weight:700; color:#f1f5f9; }
+    .pdb-subcat-desc { font-size:12px; color:#64748b; margin-top:2px; }
+    .pdb-subcat-meta { display:flex; gap:6px; flex-shrink:0; }
+    .pdb-subcat-actions { display:flex; gap:4px; opacity:0; transition:opacity 0.15s; flex-shrink:0; }
+    .pdb-subcat-row:hover .pdb-subcat-actions { opacity:1; }
+    .pdb-subcat-arrow { color:#475569; font-size:20px; font-weight:900; flex-shrink:0; }
+    .pdb-subcat-row:hover .pdb-subcat-arrow { color:#8b5cf6; }
+
+    /* ── شبكة المزودين ── */
+    .pdb-entries-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:14px; }
+    .pdb-entry-card {
+      background: rgba(255,255,255,0.04);
+      border: 1.5px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      padding: 20px 16px 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .pdb-entry-card:hover { border-color:rgba(139,92,246,0.4); box-shadow:0 8px 30px rgba(139,92,246,0.15); transform:translateY(-3px); }
+    .pdb-entry-avatar {
+      width: 64px; height: 64px; border-radius: 50%;
+      background: linear-gradient(135deg,#8b5cf6,#6366f1);
+      display: flex; align-items:center; justify-content:center;
+      color:#fff; font-size:26px; font-weight:900; overflow:hidden;
+      box-shadow: 0 4px 16px rgba(139,92,246,0.35);
+    }
+    .pdb-entry-body  { text-align:center; width:100%; }
+    .pdb-entry-name  { font-size:15px; font-weight:800; color:#f1f5f9; }
+    .pdb-entry-phone { font-size:12px; color:#64748b; margin-top:3px; }
+    .pdb-entry-notes { font-size:11px; color:#64748b; margin-top:4px; }
+    .pdb-entry-chips { display:flex; justify-content:center; flex-wrap:wrap; gap:5px; margin-top:8px; }
+    .pdb-entry-actions { position:absolute; top:10px; left:10px; display:flex; gap:4px; opacity:0; transition:opacity 0.15s; }
+    .pdb-entry-card:hover .pdb-entry-actions { opacity:1; }
+
+    /* ── Chips ── */
+    .pdb-stat-chip { font-size:11px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:20px; padding:3px 10px; color:#94a3b8; white-space:nowrap; font-family:'Cairo',sans-serif; }
+    .pdb-chip-warn { background:rgba(245,158,11,0.1); border-color:rgba(245,158,11,0.25); color:#f59e0b; }
+    .pdb-chip-ok   { background:rgba(16,185,129,0.1); border-color:rgba(16,185,129,0.25); color:#10b981; }
+
+    /* ── تفاصيل المزود ── */
+    .pdb-provider-hero { display:flex; align-items:flex-start; gap:20px; background:rgba(139,92,246,0.07); border:1.5px solid rgba(139,92,246,0.18); border-radius:20px; padding:24px; margin-bottom:24px; flex-wrap:wrap; }
+    .pdb-provider-avatar-lg { width:76px; height:76px; min-width:76px; border-radius:50%; background:linear-gradient(135deg,#8b5cf6,#6366f1); display:flex; align-items:center; justify-content:center; color:#fff; font-size:30px; font-weight:900; box-shadow:0 6px 20px rgba(139,92,246,0.4); }
+    .pdb-provider-hero-info { flex:1; min-width:0; }
+    .pdb-provider-name { font-size:20px; font-weight:900; margin:0 0 10px; color:#f1f5f9; }
+    .pdb-provider-meta-row { display:flex; flex-wrap:wrap; gap:6px; }
+    .pdb-meta-badge { font-size:12px; padding:4px 12px; border-radius:20px; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.1); color:#cbd5e1; font-family:'Cairo',sans-serif; }
+    .pdb-badge-warn { background:rgba(245,158,11,0.1); border-color:rgba(245,158,11,0.25); color:#f59e0b; }
+    .pdb-badge-ok   { background:rgba(16,185,129,0.1); border-color:rgba(16,185,129,0.25); color:#10b981; }
+    .pdb-provider-notes { font-size:13px; color:#94a3b8; margin-top:10px; line-height:1.6; }
+
+    /* ── العناوين ── */
+    .pdb-section-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+    .pdb-section-title  { font-size:17px; font-weight:800; margin:0; color:#f1f5f9; }
+    .pdb-addresses-list { display:flex; flex-direction:column; gap:14px; }
+    .pdb-address-card   { background:rgba(255,255,255,0.04); border:1.5px solid rgba(255,255,255,0.08); border-radius:16px; padding:18px; }
+    .pdb-address-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px; }
+    .pdb-address-label-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .pdb-address-label  { font-size:14px; font-weight:800; color:#f1f5f9; }
+    .pdb-map-link       { font-size:12px; color:#8b5cf6; text-decoration:none; padding:3px 10px; border:1px solid rgba(139,92,246,0.3); border-radius:8px; transition:background 0.15s; font-family:'Cairo',sans-serif; }
+    .pdb-map-link:hover { background:rgba(139,92,246,0.12); }
+    .pdb-address-actions { display:flex; gap:4px; }
+    .pdb-address-text   { font-size:13px; color:#94a3b8; margin-bottom:8px; }
+    .pdb-coords-row     { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+    .pdb-coord-chip     { font-size:11px; font-family:monospace; background:rgba(139,92,246,0.08); color:#8b5cf6; border:1px solid rgba(139,92,246,0.2); border-radius:6px; padding:2px 8px; }
+    .pdb-images-strip   { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; align-items:flex-end; }
+    .pdb-img-wrap       { position:relative; width:84px; height:84px; border-radius:12px; overflow:hidden; border:1.5px solid rgba(255,255,255,0.1); flex-shrink:0; }
+    .pdb-img-wrap img   { width:100%; height:100%; object-fit:cover; }
+    .pdb-img-del        { position:absolute; top:3px; right:3px; background:rgba(239,68,68,0.9); color:#fff; border:none; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:11px; line-height:1; }
+    .pdb-add-img-btn    { padding:8px 14px; border:1.5px dashed rgba(139,92,246,0.35); border-radius:12px; background:rgba(139,92,246,0.04); color:#8b5cf6; cursor:pointer; font-family:'Cairo',sans-serif; font-size:12px; font-weight:700; transition:all 0.15s; white-space:nowrap; }
+    .pdb-add-img-btn:hover { background:rgba(139,92,246,0.1); border-color:#8b5cf6; }
+
+    /* ── أزرار ── */
+    .pdb-btn           { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:10px 20px; border:none; border-radius:12px; font-family:'Cairo',sans-serif; font-size:14px; font-weight:700; cursor:pointer; transition:all 0.15s; }
+    .pdb-btn-primary   { background:linear-gradient(135deg,#8b5cf6,#7c3aed); color:#fff; box-shadow:0 3px 12px rgba(139,92,246,0.35); }
+    .pdb-btn-primary:hover { filter:brightness(1.12); transform:translateY(-1px); box-shadow:0 6px 18px rgba(139,92,246,0.4); }
+    .pdb-btn-secondary { background:rgba(255,255,255,0.06); color:#e2e8f0; border:1.5px solid rgba(255,255,255,0.1); }
+    .pdb-btn-secondary:hover { border-color:#8b5cf6; color:#c4b5fd; background:rgba(139,92,246,0.08); }
+    .pdb-btn-sm        { padding:6px 14px; font-size:13px; border-radius:9px; }
+    .pdb-icon-btn      { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:9px; padding:6px 9px; cursor:pointer; font-size:14px; transition:all 0.15s; line-height:1; }
+    .pdb-icon-btn:hover { border-color:#8b5cf6; background:rgba(139,92,246,0.1); }
+    .pdb-icon-btn.danger:hover { border-color:#ef4444; background:rgba(239,68,68,0.1); }
+
+    /* ── فارغ ── */
+    .pdb-empty       { text-align:center; padding:56px 20px; background:rgba(139,92,246,0.03); border:2px dashed rgba(139,92,246,0.15); border-radius:20px; }
+    .pdb-empty-icon  { font-size:52px; margin-bottom:16px; }
+    .pdb-empty h3    { color:#94a3b8; font-family:'Cairo',sans-serif; margin:0 0 8px; font-size:18px; font-weight:800; }
+    .pdb-empty p     { color:#475569; margin:0 0 20px; font-size:13px; }
+
+    @media (max-width:768px) {
+      .pdb-cats-grid    { grid-template-columns:repeat(2,1fr); }
+      .pdb-entries-grid { grid-template-columns:1fr; }
+    }
+    @media (max-width:480px) {
+      .pdb-cats-grid    { grid-template-columns:1fr; }
+      .pdb-provider-hero { flex-direction:column; align-items:center; text-align:center; }
+    }
+  </style>`;
+}

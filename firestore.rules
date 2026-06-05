@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── دالة مساعدة: التحقق من دور المدير ──
+    function isAdmin() {
+      return request.auth != null &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ── دالة مساعدة: التحقق من المصادقة ──
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // ── دالة مساعدة: المستخدم نفسه ──
+    function isSelf(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  📖 بيانات عامة للقراءة — الكتابة للمدير فقط
+    // ══════════════════════════════════════════════════════
+    match /regions/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /categories/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /services/{id} {
+      allow read: if true;
+      allow write: if isAuth();
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  🏪 نظام المتاجر — قراءة عامة، كتابة مقيدة
+    // ══════════════════════════════════════════════════════
+    match /stores/{id} {
+      allow read: if true;
+      allow write: if isAuth();
+    }
+    match /store_cats/{id} {
+      allow read: if true;
+      allow write: if isAuth();
+    }
+    match /store_products/{id} {
+      allow read: if true;
+      allow write: if isAuth();
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  👤 المستخدمون — كل مستخدم يقرأ/يكتب بياناته فقط
+    //     المدير يقرأ/يكتب بيانات أي مستخدم
+    // ══════════════════════════════════════════════════════
+    match /users/{userId} {
+      allow read:  if isSelf(userId) || isAdmin();
+      allow write: if isSelf(userId) || isAdmin();
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  🔐 سجل تدقيق المحافظ — Append-Only (لا حذف ولا تعديل)
+    // ══════════════════════════════════════════════════════
+    match /wallet_audit_log/{logId} {
+      allow read:   if isAuth();
+      allow create: if isAuth();
+      allow update, delete: if false;
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  💰 المحافظ — المستخدم يقرأ محفظته، المدير يكتب
+    // ══════════════════════════════════════════════════════
+    match /wallets/{uid} {
+      allow read:  if isSelf(uid) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  📊 المعاملات — إنشاء فقط (لا حذف ولا تعديل)
+    // ══════════════════════════════════════════════════════
+    match /transactions/{txId} {
+      allow read:   if isAuth();
+      allow create: if isAuth();
+      allow update, delete: if false;
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  📦 الطلبات — المستخدمون المصادق عليهم فقط
+    // ══════════════════════════════════════════════════════
+    match /orders/{orderId} {
+      allow read, write: if isAuth();
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  🗂️ باقي المجموعات — للمستخدمين المصادق عليهم فقط
+    // ══════════════════════════════════════════════════════
+    match /{document=**} {
+      allow read, write: if isAuth();
+    }
+  }
+}
+

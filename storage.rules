@@ -1,0 +1,53 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ─── الصور العامة للخدمات والمنتجات ──────────────────
+    // القراءة: عامة (بدون تسجيل دخول)
+    // الكتابة: يجب تسجيل الدخول فقط
+    match /images/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.resource.size < 10 * 1024 * 1024  // حد أقصى 10 MB
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // ─── الفيديوهات ───────────────────────────────────────
+    // القراءة: عامة
+    // الكتابة: يجب تسجيل الدخول، حد أقصى 50 MB
+    match /videos/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.resource.size < 50 * 1024 * 1024  // حد أقصى 50 MB
+                   && request.resource.contentType.matches('video/.*');
+    }
+
+    // ─── صور المستخدمين (الملف الشخصي) ──────────────────
+    // المستخدم يقرأ ويكتب ملفه الشخصي فقط
+    match /users/{userId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 5 * 1024 * 1024   // حد أقصى 5 MB
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // ─── الإعلانات والبانرات (للمدير فقط) ──────────────
+    match /ads/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ─── مرفقات الطلبات ──────────────────────────────────
+    match /orders/{orderId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 20 * 1024 * 1024; // حد أقصى 20 MB
+    }
+
+    // ─── رفض كل شيء آخر ──────────────────────────────────
+    match /{everything=**} {
+      allow read, write: if false;
+    }
+  }
+}

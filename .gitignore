@@ -1,0 +1,63 @@
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Build outputs
+dist/
+tmp/
+out/
+
+# Firebase cache and logs
+.firebase/
+firebase-debug.log
+ui-debug.log
+firestore-debug.log
+
+# Large archived files
+*.zip
+*.tar.gz
+*.rar
+zipFile.zip
+
+# IDEs and editors
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Replit files
+.replit
+.replit-artifact/
+replit.md
+replit.nix
+.canvas/
+
+# Scratch and temp files
+scratch/
+attached_assets/
+
+# Sensitive credentials
+google-services.json
+
+# Pnpm workspace files
+pnpm-lock.yaml
+pnpm-workspace.yaml
+
+# Dev & debug scripts
+clean_users.cjs
+clean_users_node.cjs
+debug.js
+dump_cats.cjs
+query_service_sections.js
+restore.cjs
+split-css.cjs
+test_load.js
+test_puppeteer.cjs
+run-mahjooz-local.cmd

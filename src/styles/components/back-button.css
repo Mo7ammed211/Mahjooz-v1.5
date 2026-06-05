@@ -1,0 +1,264 @@
+/* ═══════════════════════════════════════════════════════
+   MAHJOOZ — Premium Unified Navigation & Headers Styling
+   ═══════════════════════════════════════════════════════ */
+
+/* ── زر الرجوع العام للعملاء والمزودين (Pill Back Button) ── */
+.back-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 8px 18px;
+  border-radius: 99px;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.back-btn:hover {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  border-color: rgba(167, 139, 250, 0.4);
+  color: #ffffff;
+  transform: translateY(-1.5px);
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.4);
+}
+
+.back-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+}
+
+/* ── الهيدر العام للصفحات (Unified Page Header) ── */
+.page-header {
+  background: linear-gradient(135deg, rgba(26, 22, 49, 0.75) 0%, rgba(15, 12, 32, 0.8) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 28px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  display: flex !important;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}
+
+.page-header h1 {
+  order: 1;
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* محاذاة الوصف أسفل العنوان مباشرة */
+.page-header p {
+  order: 2;
+  width: 100%;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* دفع زر الرجوع وأزرار العمليات إلى أقصى اليسار */
+.page-header .back-btn {
+  order: 3;
+  margin-inline-start: auto;
+}
+
+.page-header .btn {
+  order: 4;
+}
+
+/* في حال عدم وجود زر رجوع، نقوم بدفع أول زر عمليات إلى اليسار */
+.page-header:not(:has(.back-btn)) > .btn {
+  margin-inline-start: auto;
+}
+
+/* ── شريط مسار التنقل للمدير (Glassmorphic Admin Breadcrumb) ── */
+.admin-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  margin-bottom: 24px;
+  background: linear-gradient(135deg, rgba(26, 22, 49, 0.75) 0%, rgba(15, 12, 32, 0.8) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 16px;
+  font-size: 0.82rem;
+  flex-wrap: wrap;
+  position: relative;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+/* أيقونة الهوم (الصفحة الرئيسية) */
+.adm-bc-home {
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s ease;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.adm-bc-home:hover {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #c4b5fd;
+  transform: scale(1.08);
+}
+
+/* فاصل المسار (‹) */
+.adm-bc-sep {
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.55;
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+/* عناصر المسار القابلة للنقر */
+.adm-bc-item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  color: #a78bfa;
+  font-family: var(--font-ar);
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+.adm-bc-item:hover {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.35);
+  color: #c4b5fd;
+  transform: translateY(-1px);
+}
+
+/* القسم الحالي (غير قابل للنقر) */
+.adm-bc-current {
+  color: #ffffff;
+  font-family: var(--font-ar);
+  font-size: 12.5px;
+  font-weight: 800;
+  padding: 6px 14px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.22) 0%, rgba(139, 92, 246, 0.1) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: 99px;
+  flex-shrink: 0;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.12);
+}
+
+/* زر الرجوع الإداري الملون */
+.adm-bc-back {
+  appearance: none;
+  -webkit-appearance: none;
+  margin-inline-start: auto;
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  color: #ffffff;
+  font-family: var(--font-ar);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 16px;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+}
+
+.adm-bc-back:hover {
+  background: linear-gradient(135deg, #956aff, #864df2);
+  border-color: rgba(167, 139, 250, 0.5);
+  transform: translateY(-1.5px);
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.45);
+}
+
+.adm-bc-back:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+}
+
+/* ── الاستجابة للشاشات الصغيرة (Responsive Adjustments) ── */
+@media (max-width: 768px) {
+  .page-header {
+    padding: 16px 20px;
+    align-items: stretch;
+  }
+  
+  .page-header h1 {
+    font-size: 1.25rem;
+    width: 100%;
+  }
+  
+  .page-header .back-btn {
+    width: 100%;
+    margin-top: 6px;
+    margin-inline-start: 0;
+  }
+
+  .page-header .btn {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+
+  .admin-breadcrumb {
+    padding: 8px 12px;
+    gap: 6px;
+    border-radius: 12px;
+  }
+  
+  .adm-bc-home {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+
+  .adm-bc-item, .adm-bc-current {
+    font-size: 11px;
+    padding: 5px 10px;
+  }
+  
+  .adm-bc-back {
+    font-size: 11px;
+    padding: 5px 12px;
+    width: 100%;
+    text-align: center;
+    margin-top: 6px;
+  }
+}
