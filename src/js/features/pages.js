@@ -109,12 +109,21 @@ function renderHome() {
             <div class="hub-desc">صيدليات ومنتجات طبية مع توصيل</div>
             <span class="badge badge-gold">${(AppData.stores||[]).length} متجر متاح</span>
           </div>`)}
-          ${_card('offers', `<div class="hub-card" onclick="${_click('offers','navigate(\'offers\')')}" style="position:relative;overflow:hidden">
-            <div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(239,68,68,0.08),rgba(245,158,11,0.06));border-radius:inherit;pointer-events:none"></div>
-            <span class="hub-icon">🏷️</span><div class="hub-title" style="color:#ef4444">العروض والخصومات</div>
-            <div class="hub-desc">أفضل العروض من جميع الأقسام في مكان واحد</div>
-            <span class="badge" style="background:linear-gradient(135deg,#ef4444,#f59e0b);color:#fff">${(()=>{const now=new Date();return(AppData.offers||[]).filter(o=>o.active&&(!o.expiresAt||(o.expiresAt.toDate?o.expiresAt.toDate():new Date(o.expiresAt))>now)).length})()}&nbsp;عرض نشط</span>
-          </div>`)}`;
+          ${(()=>{
+            // بطاقة العروض تظهر دائماً للعميل، بغض النظر عن إعدادات sv
+            const offersCount = (()=>{const now=new Date();return(AppData.offers||[]).filter(o=>o.active&&(!o.expiresAt||(o.expiresAt.toDate?o.expiresAt.toDate():new Date(o.expiresAt))>now)).length;})();
+            const offersHtml = `<div class="hub-card hub-card-offers" onclick="${_click('offers','navigate(\'offers\')')}" style="position:relative;overflow:hidden">
+              <div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(239,68,68,0.08),rgba(245,158,11,0.06));border-radius:inherit;pointer-events:none"></div>
+              ${offersCount > 0 ? `<div style="position:absolute;top:10px;left:10px;background:linear-gradient(135deg,#ef4444,#f59e0b);color:#fff;font-size:11px;font-weight:800;border-radius:99px;padding:3px 9px;z-index:2">🔥 ${offersCount} عرض</div>` : ''}
+              <span class="hub-icon">🏷️</span>
+              <div class="hub-title" style="color:#ef4444">العروض والخصومات</div>
+              <div class="hub-desc">أفضل العروض من جميع الأقسام في مكان واحد</div>
+              <span class="badge" style="background:linear-gradient(135deg,#ef4444,#f59e0b);color:#fff">${offersCount > 0 ? offersCount + ' عرض نشط' : 'تابع أحدث العروض'}</span>
+            </div>`;
+            // للمدير نستخدم _card لإظهار شارات الإخفاء والصيانة، للعميل تظهر دائماً
+            if (isAdmin) return _card('offers', offersHtml);
+            return offersHtml;
+          })()}`;
         })()}
       </div>
     </div>
